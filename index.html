@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walk-through simulations</title>
+<style>
+  :root { --bg:#f6f1e7; --card:#fffaf0; --ink:#2b2118; --muted:#6b5a48; --line:#e2d6c2; --accent:#8a4b1f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1b1713; --card:#25201a; --ink:#f0e6d6; --muted:#b5a48c; --line:#3a3128; --accent:#e0a36a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.55 Georgia, "Palatino Linotype", serif; }
+  main { max-width:760px; margin:0 auto; padding:48px 16px 64px; }
+  h1 { font-size:2rem; margin:0 0 6px; }
+  .lede { color:var(--muted); margin:0 0 32px; }
+  .card { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:18px 20px; margin-bottom:16px; text-decoration:none; color:inherit; }
+  .card:hover { border-color:var(--accent); }
+  .card h2 { font-size:1.25rem; margin:0 0 4px; color:var(--accent); }
+  .card p { margin:0; }
+  .tags { margin-top:8px; font:13px/1.4 "Segoe UI", system-ui, sans-serif; color:var(--muted); }
+  footer { margin-top:40px; font:14px/1.5 "Segoe UI", system-ui, sans-serif; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Walk-through simulations</h1>
+  <p class="lede">Historical scenes you can walk through in a web browser, on a laptop or in a VR headset.</p>
+
+  <a class="card" href="etta1910.html">
+    <h2>218 Etta Avenue, 1910</h2>
+    <p>The Fraundorf family's home in south St. Louis, with the neighbourhood, the streetcar and the railroad. Also shown are the River Des Peres where it meets the Mississippi, and the family's geese, which Shirley walks down to the shore.</p>
+    <div class="tags">Laptop: click to start, then WASD to walk · VR: press “Enter VR”</div>
+  </a>
+
+  <a class="card" href="cahokia.html">
+    <h2>Cahokia, about 1100 CE</h2>
+    <p>The largest city north of Mexico at its height, in the floodplain across from today's St. Louis. You can climb Monks Mound, cross the Grand Plaza, and travel out to the mound groups at East St. Louis and St. Louis, Horseshoe Lake and the Emerald Acropolis. This version adds a canoe landing at the mouth of Cahokia Creek and more mounds where downtown St. Louis is now.</p>
+    <div class="tags">Laptop: click to start, WASD to walk, M for the map · VR: press “Enter VR”</div>
+  </a>
+
+  <a class="card" href="moon_baseball_bullet_time.html">
+    <h2>Moon Baseball in Bullet-Time</h2>
+    <p>A night game in a domed stadium on the Moon, played as in P. Fraundorf's note: the ball is six times as massive, so it travels the same arcs as on Earth at about 2/5 the speed. Fielders leap 3 m to rob home runs, and now and then the heavy ball carries one over the wall. Adapted from Scott Fraundorf's original program.</p>
+    <div class="tags">Laptop: drag to look, 1–4 change seat, W wall-ball demo · VR: press “Enter VR”</div>
+  </a>
+
+  <!-- To add another simulation, upload its .html file next to this one and copy the block below:
+  <a class="card" href="other_file.html">
+    <h2>Title</h2>
+    <p>One- or two-sentence description.</p>
+    <div class="tags">Laptop · VR</div>
+  </a>
+  -->
+
+  <footer>On a VR headset (e.g. Meta Quest), open this page in the headset's browser and pick a scene.</footer>
+</main>
+</body>
+</html>
