@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vivian's Travel Diary</title>
+<style>
+:root{--bg:#0b0d12;--panel:#141821;--ink:#ece6d9;--muted:#a69f8f;--line:#2a303c;--accent:#e6a96c;--accent2:#7fc8d6;--chip:#1d2330}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif}
+body{display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font:600 21px Georgia,"Palatino Linotype",serif;margin:0 12px 0 0;color:var(--accent)}
+header .sub{color:var(--muted);font-size:13px;flex:1 1 220px}
+button,.chip{font:600 13px "Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer}
+button:hover,.chip:hover{border-color:var(--accent)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent}
+.seg button.on{background:var(--accent);color:#1a1208}
+#chips{display:flex;gap:6px;padding:6px 16px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.chip{white-space:nowrap;font-weight:500;padding:4px 10px}
+.chip.on{background:var(--accent);color:#1a1208;border-color:var(--accent)}
+#tl{display:block;width:100%;height:64px;cursor:pointer}
+#wrap{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 410px}
+#stagebox{position:relative;min-height:0;border-right:1px solid var(--line)}
+#stage{position:absolute;inset:0;width:100%;height:100%;display:block}
+aside{overflow-y:auto;padding:14px 18px 40px;background:var(--panel)}
+.kicker{color:var(--muted);font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+aside h2{font:600 22px Georgia,"Palatino Linotype",serif;margin:2px 0 10px;color:var(--accent)}
+aside h3{font:600 14px "Segoe UI",sans-serif;margin:16px 0 6px;color:var(--accent2);text-transform:uppercase;letter-spacing:.05em}
+aside p{margin:0 0 10px}
+.nums{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;background:#0f131a;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0 12px;font-size:13.5px}
+.nums b{color:var(--accent);font-weight:600;white-space:nowrap}
+.ctrl{margin:6px 0 10px}
+.row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:0 8px;margin:4px 0}
+.row label{font-size:13px;color:var(--muted)}
+.row output{font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}
+.row input{grid-column:1/3;width:100%;accent-color:var(--accent)}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+ul.how{list-style:none;padding:0;margin:0}
+ul.how li{margin:0 0 8px;padding-left:12px;border-left:2px solid var(--line);font-size:14px}
+ul.how button{margin-top:3px;padding:2px 8px;font-size:12px;font-weight:500}
+.note{font-size:12.5px;color:var(--muted)}
+@media (max-width:900px){
+  body{display:block;height:auto}
+  #wrap{display:block}
+  #stagebox{height:62vh;border-right:0;border-bottom:1px solid var(--line)}
+  aside{overflow:visible}
+}
+</style></head><body>
+<header>
+  <h1>Vivian's Travel Diary</h1>
+  <span class="sub">A micron-sized core/rim carbon sphere, from an AGB star's atmosphere to a TEM at UM-St. Louis. After Volkert &amp; Fraundorf (2024).</span>
+  <span class="seg" id="mode"><button data-m="fwd" class="on">Forward in time</button><button data-m="diary">Diary (lab first)</button></span>
+  <button id="prev">&#9664; Prev</button><button id="next">Next &#9654;</button>
+</header>
+<nav id="chips"></nav>
+<canvas id="tl"></canvas>
+<div id="wrap">
+  <div id="stagebox"><canvas id="stage"></canvas></div>
+  <aside id="panel"></aside>
+</div>
+<script>
+"use strict";
+// ---------- basics ----------
+const $=s=>document.querySelector(s);
+const PI=Math.PI, TAU=2*PI;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)), lerp=(a,b,u)=>a+(b-a)*u, ease=u=>u<0?0:u>1?1:u*u*(3-2*u);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
+const FONT='"Segoe UI",system-ui,sans-serif';
+function txt(c,s,x,y,o={}){c.font=`${o.w||400} ${o.size||13}px ${o.serif?'Georgia,"Palatino Linotype",serif':FONT}`;c.fillStyle=o.color||'#ece6d9';c.textAlign=o.align||'left';c.textBaseline=o.base||'alphabetic';if(o.shadow){c.save();c.shadowColor='rgba(0,0,0,.8)';c.shadowBlur=4;c.fillText(s,x,y);c.restore();}else c.fillText(s,x,y);}
+function sci(v,d=1){if(v===0)return'0';const e=Math.floor(Math.log10(Math.abs(v)));const m=v/10**e;return (Math.abs(e)<3)?v.toPrecision(d+1):`${m.toFixed(d)}×10${sup(e)}`;}
+function sup(n){const m={'-':'⁻','0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'};return String(n).split('').map(ch=>m[ch]).join('');}
+function fmtAgo(y){if(y>=1e9)return(y/1e9).toFixed(y>=1e10?0:2).replace(/\.?0+$/,'')+' billion yr';if(y>=1e6)return(+(y/1e6).toPrecision(3))+' million yr';if(y>=1e3)return(+(y/1e3).toPrecision(3))+' thousand yr';return Math.round(y)+' yr';}
+function circle(c,x,y,r){c.beginPath();c.arc(x,y,Math.max(0,r),0,TAU);}
+function glow(c,x,y,r,col,a=1){const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,col.replace('A',a));g.addColorStop(1,col.replace('A',0));c.fillStyle=g;circle(c,x,y,r);c.fill();}
+function scaleBar(c,x,y,px,label){c.strokeStyle='#ece6d9';c.lineWidth=2;c.beginPath();c.moveTo(x,y);c.lineTo(x+px,y);c.moveTo(x,y-4);c.lineTo(x,y+4);c.moveTo(x+px,y-4);c.lineTo(x+px,y+4);c.stroke();txt(c,label,x+px/2,y-7,{align:'center',size:12,shadow:1});}
+const NOW=2026;
+
+// ---------- physics: rim race (stop 2) ----------
+const K={G:6.674e-11,c:2.998e8,sig:5.670e-8,k:1.381e-23,mH:1.674e-27,Msun:1.989e30,Rsun:6.957e8,Lsun:3.828e26,yr:3.156e7};
+const P2={phase:0.5,mdot:-5,vinf:15,co:1.2,alpha:0.5,seeds:-12,tc:1900};
+const RC=0.3375e-6, RHOC=1800, RHOR=2200, RIM_OBS=0.1125; // Vivian: core 0.675 um diameter, slice 0.9 um
+function runRim(p){
+  const T=2800-300*p.phase, Rst=160+350*p.phase; // Lodders & Fegley 3 Msun: max phase 2800 K,160 Rsun -> min 2500 K,510 Rsun
+  const Rs=Rst*K.Rsun, L=4*PI*Rs*Rs*K.sig*T**4, M=3*K.Msun;
+  const md=10**p.mdot*K.Msun/K.yr, vinf=p.vinf*1e3, v0=2e3;
+  const CH=(p.co-1)*4.9e-4, xC=CH*12/1.4, rhoph=1e-6, Hs=0.015, nseed=10**p.seeds, al=p.alpha, Tc=p.tc;
+  const env=x=>{const W=0.5*(1-Math.sqrt(Math.max(0,1-1/(x*x))));const Td=T*W**0.25;
+    const vg=v0+(vinf-v0)*Math.sqrt(Math.max(0,1-1/x));
+    const rho=rhoph*Math.exp(-(x-1)/Hs)+md/(4*PI*(x*Rs)**2*vg);return{Td,vg,rho};};
+  // gas parcel carrying the ordinary small-grain population: sets how much free carbon is left at each radius
+  const fx=[],fa=[],ff=[];let x=1,a=0,f=1,xcond=null;
+  while(x<=101){const e=env(x);const vC=Math.sqrt(8*K.k*e.Td/(PI*13*K.mH));const dx=x<5?0.002:0.02;const dt=dx*Rs/e.vg;
+    if(e.Td<Tc){if(xcond===null)xcond=x;if(f>0){a+=al*xC*f*e.rho*vC/(4*RHOR)*dt;f=Math.max(0,1-nseed*(4/3*PI*a**3*RHOR/(12*K.mH))/CH);}}
+    fx.push(x);fa.push(a);ff.push(f);x+=dx;}
+  const look=x=>{let lo=0,hi=fx.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(fx[m]<=x)lo=m;else hi=m;}return lo;};
+  // Vivian
+  let R=Rs,v=0,r=RC,t=0,dt=10,rth=0;const mcore=4/3*PI*RC**3*RHOC;const out=[];let nextLog=-1;
+  let tgrow0=null,tgrow1=null;
+  while(R<100*Rs&&t<500*K.yr){
+    x=R/Rs;const e=env(x);const m=mcore+4/3*PI*(r**3-RC**3)*RHOR;
+    const arad=L*r*r/(4*R*R*K.c*m),g=K.G*M/(R*R);
+    const vbar=Math.sqrt(8*K.k*e.Td/(PI*2.3*K.mH));
+    let vd=v-e.vg;const coef=PI*r*r*e.rho*Math.sqrt(vd*vd+(4/3*vbar)**2)/m;
+    v=(v+dt*(arad-g)+dt*coef*e.vg)/(1+dt*coef);vd=v-e.vg;
+    const vC=Math.sqrt(8*K.k*e.Td/(PI*13*K.mH));const i=look(x),fl=ff[i];
+    if(e.Td<Tc&&fl>0){const base=al*xC*fl*e.rho/(4*RHOR);const dr=base*Math.sqrt(vd*vd+vC*vC)*dt;r+=dr;rth+=base*vC*dt;
+      if(dr>1e-13&&tgrow0===null)tgrow0=t; if(dr>1e-13)tgrow1=t;}
+    if(Math.log10(x)>=nextLog){out.push({x,t,v,vd,vg:e.vg,rim:r-RC,rth,rho:e.rho,Td:e.Td,f:fl,a:fa[i],arad,g});nextLog=Math.log10(x)+0.004;}
+    R+=v*dt;t+=dt;dt=Math.min(Math.max(10,0.002*R/Math.max(Math.abs(v),1)),1e5);
+  }
+  const e=env(x);out.push({x,t,v,vd:v-e.vg,vg:e.vg,rim:r-RC,rth,rho:e.rho,Td:e.Td,f:0,a,arad:0,g:0});
+  const last=out[out.length-1];
+  const at90=out.find(o=>o.rim>=0.9*last.rim)||last;
+  return{T,Rst,Rs,L,M,out,aSmall:a,xcond:xcond||1,aph:3*K.sig*T**4/(4*K.c*RHOC*RC),gph:K.G*M/(Rs*Rs),
+    vdAsym:Math.sqrt(L*vinf/(K.c*md)),last,at90,tgrow:(tgrow1||0)-(tgrow0||0)};
+}
+let RIM=runRim(P2);
+
+// ---------- stop data ----------
+const ISM={T:300,rb:6.0}; // Myr in the interstellar medium, birth galactocentric radius (kpc)
+const T_SS=4.567e9;
+const birthAgo=()=>T_SS+ISM.T*1e6+2e6;
+const STOPS=[
+ {key:'birth',title:'Birth in a carbon star',chip:'1 Birth',ago:()=>birthAgo(),when:()=>`about ${fmtAgo(birthAgo())} ago`},
+ {key:'rim',title:'The rim race and ejection',chip:'2 Rim race',ago:()=>birthAgo()-1,when:()=>`a few years, ${fmtAgo(birthAgo())} ago`},
+ {key:'ism',title:'Alone in the Milky Way',chip:'3 Interstellar',ago:()=>T_SS+ISM.T*5e5,span:()=>[birthAgo(),T_SS+1e6],when:()=>`${fmtAgo(ISM.T*1e6)} in the interstellar medium`},
+ {key:'neb',title:'Joining the solar nebula',chip:'4 Solar nebula',ago:()=>T_SS,when:()=>'about 4.567 billion yr ago'},
+ {key:'sleep',title:'The long sleep inside an asteroid',chip:'5 Long sleep',ago:()=>6e7,span:()=>[4.56e9,8e5],when:()=>'4.56 billion to 0.8 million yr ago'},
+ {key:'break',title:'Broken loose',chip:'6 Breakup',ago:()=>8e5,span:()=>[8e5,NOW-1969],when:()=>'about 800,000 yr ago'},
+ {key:'fall',title:'The fall at Murchison',chip:'7 The fall',ago:()=>NOW-1969,when:()=>'28 September 1969'},
+ {key:'chem',title:'Acids, centrifuges and isotopes',chip:'8 Chicago & WashU',ago:()=>NOW-1994,span:()=>[NOW-1988,NOW-2003],when:()=>'1980s–2000s'},
+ {key:'tem',title:'Sliced, and seen in a TEM',chip:'9 UMSL TEM',ago:()=>NOW-2024,span:()=>[NOW-2002,NOW-2024],when:()=>'2000s–2024, UM-St. Louis'}
+];
+
+// ---------- text panels ----------
+function rimNums(){const r=RIM,l=r.last;return [
+ ['Star (pulsation phase)',`${r.T.toFixed(0)} K, ${r.Rst.toFixed(0)} R☉, ${(r.L/K.Lsun).toFixed(0)} L☉`],
+ ['Push at photosphere',`${r.aph.toFixed(1)} m/s² (gravity ${r.gph.toPrecision(2)} m/s²)`],
+ ['Rim starts growing at',`${r.xcond.toFixed(2)} R★ (grain cooler than ${P2.tc} K)`],
+ ['Ordinary dust grains reach',`${(r.aSmall*1e6).toFixed(3)} µm radius`],
+ ['Vivian’s rim',`<span style="color:#ffd27a">${(l.rim*1e6).toFixed(3)} µm</span> (observed ≈ ${RIM_OBS} µm)`],
+ ['Share from sweeping up',`${l.rim>0?Math.round(100*(1-l.rth/l.rim)):0}%`],
+ ['90% of rim done by',`${(r.at90.t/K.yr).toFixed(2)} yr, at ${r.at90.x.toFixed(1)} R★`],
+ ['Speed at 100 R★',`${(l.v/1e3).toFixed(1)} km/s (gas ${(l.vg/1e3).toFixed(1)}, drift ${(l.vd/1e3).toFixed(1)})`],
+ ['Drift estimate √(Lv∞/cṀ)',`${(r.vdAsym/1e3).toFixed(1)} km/s`]];}
+
+function ismNums(){const T=ISM.T;const prot=5*PI*(0.45e-4)**2*T*1e6*K.yr;
+ return [['Time between stars',`${T>=1000?(T/1000).toFixed(2)+' Gyr':T.toFixed(0)+' Myr'}`],['Galactic orbits (230 Myr each)',(T/230).toFixed(2)],
+ ['Born at',`${ISM.rb.toFixed(1)} kpc from the Galactic centre`],['Ejection speed lost to gas drag within',`~20 pc`],
+ ['Cosmic-ray protons through her',`~${sci(prot,1)} (at ~5 cm⁻² s⁻¹)`],['Birth date',`${fmtAgo(birthAgo())} ago`]];}
+
+const PANEL={
+birth:{nums:()=>[['Parent star','carbon-rich AGB star, about 3 M☉'],['Photosphere','2500–2800 K, 160–510 R☉ (pulsating)'],['Graphene sheet size','~600 atoms, ~4.5 nm across'],['Core diameter','0.675 µm, density 1.5–2 g/cm³']],
+ text:`<p>Vivian's parent was an asymptotic-giant-branch (AGB) star of about three solar masses. Its core had long since finished burning hydrogen. Helium burning in a shell around the carbon–oxygen core made fresh carbon, and repeated <i>third dredge-up</i> episodes mixed it up to the surface, along with intershell matter rich in <sup>22</sup>Ne. Eventually carbon outnumbered oxygen. Carbon monoxide locks up the oxygen, so the extra carbon was free to condense.</p>
+ <p>In the picture from the paper, Vivian began as a nanodroplet of supercooled liquid carbon. Chains formed inside it, then rings of 5, 6 and 7 atoms. Five-membered rings seeded faceted pentacones, and six-membered rings seeded flat graphene sheets. The sheets grew until they ran into each other at about 600 atoms each, without stacking into graphite layers. By the time the core reached about 0.675 µm across, it had become a solid.</p>
+ <p class="note">This animation is schematic. Where and how fast the core itself formed (single-atom growth, colliding PAHs, or dendritic freezing of a liquid droplet) is still under study.</p>`,
+ how:[['Electron diffraction from the core shows graphene rings but little or no 002 (layer-stacking) signal: sheets, not graphite.',8],['Diffraction line widths give a sheet size of about 600 atoms (Chrostoski et al. 2023).',8],['Nearly pure <sup>22</sup>Ne and odd <sup>12</sup>C/<sup>13</sup>C in this residue point to a carbon-rich AGB star.',7]]},
+rim:{nums:rimNums,ctrl:'rim',
+ text:`<p>Starlight pushes harder on Vivian than gravity pulls. At the photosphere the push gives an acceleration <i>a</i> ≈ 3σT⁴/(4cρr). For her 0.3375 µm-radius core at 1.8 g/cm³, that is 9–14 m/s². Gravity there is only 0.003–0.03 m/s². Both forces fall off as 1/R², so the push wins at every distance.</p>
+ <p>She cannot simply race away, because the surrounding gas holds her back. Drag sets a <i>drift speed</i> relative to the gas. That drift is only metres per second in the dense inner atmosphere and grows to about 10 km/s in the thin wind.</p>
+ <p>Her graphite rim grows once she is cool enough for carbon to stick. Carbon reaches her in two ways: by its own thermal motion (about 1.5 km/s) and by her sweeping through the gas at the drift speed. The ordinary small dust grains condensing alongside her compete for the same free carbon. The rim stops growing when they have used it up, which takes months. Fewer competing grains leave more carbon for Vivian, which means a thicker rim.</p>
+ <p class="note">Model: carbon left over after CO forms, with a sticking fraction α. The extended-atmosphere density is 10⁻⁹ g/cm³ at the photosphere, with an exponential falloff, plus a wind of rate Ṁ. Grain temperature comes from radiative equilibrium with the dilute starlight. Drag uses the Epstein form, from subsonic to supersonic. Mie corrections (Q<sub>pr</sub> = 1) and grain charge are ignored. So is the possibility that molecules hitting at ~10 km/s bounce or sputter instead of sticking. That would cut the sweep-up share.</p>`,
+ how:[['EELS mean free path: core density 1.5–2 g/cm³, which fixes her mass and so the push.',8],['TEM slice: 0.675 µm core inside a 0.9 µm slice, so a rim of ≈ 0.11 µm or more.',8],['The rim is concentric graphite: it grew on an already-solid core.',8]]},
+ism:{nums:ismNums,ctrl:'ism',
+ text:`<p>Leaving at about 25 km/s, Vivian slows to a stop against the interstellar gas once she has swept up about her own mass, within roughly 20 parsecs. From then on she drifts with the Galaxy's gas, going around the centre once every ~230 million years. Supernova shocks, molecular clouds and the gas's own churning slowly move her inward or outward.</p>
+ <p>She is unshielded the whole time. Hundreds of millions of galactic cosmic-ray protons pass straight through her. They damage less than heavy ions would, and her rim stays crystalline. Her noble gases survive.</p>
+ <p>How long was the trip? Cosmic-ray neon in presolar SiC grains (Heck et al. 2020) points to mostly 10–300 million years. A short trip would fit a picture in which Vivian's neighbourhood was soon swept into the cloud that became the Sun. One caution: a star of about 3 M☉ ends as a white dwarf, not a supernova. So a "trigger" in that picture would have to be a massive neighbour's supernova, or a late AGB wind running into the cloud.</p>`,
+ how:[['A crystalline rim: she never sat in a heavy-ion flux strong enough to wreck it.',8],['Exotic noble gases are still trapped: no strong heating since.',7]]},
+neb:{nums:()=>[['Solar system age','4.567 billion yr (oldest inclusions)'],['Meteorite class','CM2 carbonaceous chondrite'],['Shielding','below ~150 g/cm² (about 0.5 m of rock) cosmic rays fade']],
+ text:`<p>A cloud of gas and dust collapsed into the young Sun and a spinning disk. Vivian was one dust grain among countless others. In the cold outer disk, dust stuck to dust, and within a few million years she had been swept into a body large enough to shield her from cosmic rays: the parent asteroid of the Murchison meteorite.</p>
+ <p>Murchison is a CM2 carbonaceous chondrite. Water warmed by short-lived radioactivity soaked through the parent body and changed many of its minerals, but it was never heated strongly. Graphite shrugs off water, and her neighbours' exotic gases stayed put.</p>`,
+ how:[['Radiometric ages of meteorites cluster near 4.56 billion years.',null],['Surviving noble gases in her residue mean that she was never strongly heated.',7]]},
+sleep:{nums:()=>[['Duration','~4.56 billion yr'],['Where','the asteroid belt, ~2–3.5 AU'],['Cosmic rays','blocked by the rock above her']],
+ text:`<p>For four and a half billion years Vivian lay in the dark inside her asteroid. The Moon formed, life appeared on Earth, oxygen filled its air, animals diversified in the Cambrian, and the dinosaurs rose and fell. None of this reached her.</p>`,
+ how:[['Cosmic-ray exposure ages measure only the last stretch of time near a surface. Everything before that was spent buried.',7]]},
+break:{nums:()=>[['Cosmic-ray exposure age','~0.8 million yr (paper’s value)'],['Fragment size','metre-scale'],['New orbit','Earth-crossing']],
+ text:`<p>About 800,000 years ago a collision broke her part of the parent body into metre-sized pieces. That was around the time <i>Homo erectus</i> learned to control fire. Now within a metre or so of a surface, she started collecting cosmic-ray products, and that set the exposure clock running.</p>
+ <p>The collision, slow thermal (Yarkovsky) nudges and resonances with Jupiter gradually stretched the fragment's orbit until it crossed Earth's. She warmed briefly at each pass near the Sun, never enough to release her neon.</p>`,
+ how:[['Cosmic-ray-produced noble gases in Murchison give its exposure age.',7]]},
+fall:{nums:()=>[['Date','28 September 1969, ~10:58 a.m.'],['Place','Murchison, Victoria, Australia'],['Heat penetration in ~5 s','~2√(κt) ≈ 3 mm'],['Total recovered','> 100 kg']],
+ text:`<p>The meteoroid tore into the atmosphere over Victoria and broke up, scattering stones across more than 13 km². Its outer skin melted into a fusion crust. The fireball lasted only seconds, though, and heat soaks into rock slowly. Only a few millimetres were warmed, so a few centimetres in, Vivian never noticed.</p>
+ <p>Too large a body, and the impact would have vaporised much of it. Too small, and it would have burned away. For Vivian, Murchison was just right.</p>`,
+ how:[['Pristine <sup>22</sup>Ne-rich gas in the residues: her interior stayed cold.',7]]},
+chem:{nums:()=>[['Graphite in Murchison','parts per million of the rock'],['Solar ¹²C/¹³C','89'],['Ne-E(L)','nearly pure ²²Ne']],
+ text:`<p>At the University of Chicago, Murchison was dissolved away in a series of acids and bases, then centrifuged and sorted by density and size (Amari, Lewis &amp; Anders 1994). Most of the rock is silicates and oxides, which dissolve. Graphite resists almost everything except molten iron and atomic oxygen.</p>
+ <p>What remained held neon that is nearly pure <sup>22</sup>Ne, unlike anything else in the solar system. At Washington University, carbon isotope ratios in single grains turned out to be wildly different from the solar value of 89. Both are fingerprints of nucleosynthesis in other stars, so these residues are ancient stardust.</p>`,
+ how:[['Neon, argon, krypton and xenon with non-solar isotope patterns.',null],['¹²C/¹³C far from solar in individual grains.',null]]},
+tem:{nums:()=>[['Slice thickness','< 100 nm'],['Vivian’s slice','0.9 µm across, core 0.675 µm'],['Core density (EELS)','1.5–2 g/cm³ (rim graphite 2.2)'],['Microscope','300 kV TEM']],ctrl:'tem',
+ text:`<p>At UM-St. Louis, a batch of graphite spheres was embedded in hard resin. A diamond-knife ultramicrotome cut the block into slices under 100 nm thick. The slices floated off onto water and were caught on a TEM grid. Dori Witt found and named Vivian.</p>
+ <p>In the microscope the slice is a ring of concentric graphite, the <b>rim</b>, around a <b>core</b> whose diffraction shows graphene sheets with little or no layering. Electron energy-loss measurements of the inelastic mean free path give the core density.</p>
+ <p>A slice is a random cut. A cut off the centre looks smaller, and its rim looks relatively thicker. Try it with the slider. Some of the small, thick-rimmed slices seen among the many onions examined may simply be off-centre cuts. The sectioning geometry should be corrected for before rim thickness is compared with the rim-race model.</p>`,
+ how:[['Everything in stops 1–7 is read back from measurements like these.',null]]}
+};
+
+// ---------- state, nav ----------
+let mode='fwd', cur=0, t0=performance.now();
+const order=()=>mode==='fwd'?[0,1,2,3,4,5,6,7,8]:[8,7,6,5,4,3,2,1,0];
+function go(i){cur=i;t0=performance.now();buildPanel();drawTL();document.querySelectorAll('.chip').forEach((c,k)=>c.classList.toggle('on',+c.dataset.i===i));}
+function step(d){const o=order();let k=o.indexOf(cur)+d;k=(k+o.length)%o.length;go(o[k]);}
+$('#prev').onclick=()=>step(-1);$('#next').onclick=()=>step(1);
+document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;document.querySelectorAll('#mode button').forEach(x=>x.classList.toggle('on',x===b));buildChips();go(order()[0]);});
+function buildChips(){const n=$('#chips');n.innerHTML='';order().forEach(i=>{const c=document.createElement('button');c.className='chip';c.dataset.i=i;c.textContent=STOPS[i].chip;c.onclick=()=>go(i);n.appendChild(c);});}
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowRight')step(1);if(e.key==='ArrowLeft')step(-1);});
+
+function slider(parent,label,min,max,stepv,val,fmt,on){const d=document.createElement('div');d.className='row';
+  d.innerHTML=`<label>${label}</label><output></output><input type="range" min="${min}" max="${max}" step="${stepv}" value="${val}">`;
+  const inp=d.querySelector('input'),out=d.querySelector('output');out.textContent=fmt(+inp.value);
+  inp.oninput=()=>{out.textContent=fmt(+inp.value);on(+inp.value);};parent.appendChild(d);return inp;}
+function setNums(){const s=STOPS[cur],p=PANEL[s.key];const el=$('#nums');if(el)el.innerHTML=p.nums().map(([a,b])=>`<span>${a}</span><b>${b}</b>`).join('');}
+let rimTimer=null;
+function rimChanged(){clearTimeout(rimTimer);rimTimer=setTimeout(()=>{RIM=runRim(P2);setNums();},60);}
+const TEMP={rc:0.3375,rim:0.1125,z:0,ap:'core'};
+function buildPanel(){
+  const s=STOPS[cur],p=PANEL[s.key],pos=order().indexOf(cur)+1;
+  const pane=$('#panel');
+  pane.innerHTML=`<div class="kicker">${mode==='fwd'?'Stop':'Diary entry'} ${pos} of 9 · ${s.when()}</div><h2>${s.title}</h2><div class="ctrl" id="ctrl"></div><div class="nums" id="nums"></div>${p.text}<h3>${mode==='fwd'?'How we know':'What the lab told us'}</h3><ul class="how" id="how"></ul>`;
+  const how=$('#how');p.how.forEach(([t,to])=>{const li=document.createElement('li');li.innerHTML=t;if(to!==null&&to!==cur){const b=document.createElement('button');b.textContent=`→ stop ${to+1}: ${STOPS[to].chip.replace(/^\d+ /,'')}`;b.onclick=()=>go(to);li.appendChild(document.createElement('br'));li.appendChild(b);}how.appendChild(li);});
+  const c=$('#ctrl');
+  if(p.ctrl==='rim'){
+    slider(c,'Pulsation phase (max 2800 K → min 2500 K)',0,1,0.05,P2.phase,v=>v.toFixed(2),v=>{P2.phase=v;rimChanged();});
+    slider(c,'Mass-loss rate Ṁ',-7,-4,0.1,P2.mdot,v=>sci(10**v,1)+' M☉/yr',v=>{P2.mdot=v;rimChanged();});
+    slider(c,'Wind terminal speed v∞',5,30,1,P2.vinf,v=>v+' km/s',v=>{P2.vinf=v;rimChanged();});
+    slider(c,'C/O ratio',1.05,2,0.05,P2.co,v=>v.toFixed(2),v=>{P2.co=v;rimChanged();});
+    slider(c,'Sticking fraction α',0.05,1,0.05,P2.alpha,v=>v.toFixed(2),v=>{P2.alpha=v;rimChanged();});
+    slider(c,'Competing dust nuclei per H atom',-15,-10,0.1,P2.seeds,v=>sci(10**v,1),v=>{P2.seeds=v;rimChanged();});
+    slider(c,'Graphite growth below',1500,2200,25,P2.tc,v=>v+' K',v=>{P2.tc=v;rimChanged();});
+    const b=document.createElement('div');b.className='btns';b.innerHTML='<button>Reset</button><button>Replay</button>';
+    b.children[0].onclick=()=>{Object.assign(P2,{phase:0.5,mdot:-5,vinf:15,co:1.2,alpha:0.5,seeds:-12,tc:1900});RIM=runRim(P2);buildPanel();};
+    b.children[1].onclick=()=>{t0=performance.now();};c.appendChild(b);
+  }else if(p.ctrl==='ism'){
+    const b=document.createElement('div');b.className='btns';b.innerHTML='<button>Short trip (25 Myr, nearby)</button><button>Long trip (1.2 Gyr, inner Galaxy)</button>';
+    b.children[0].onclick=()=>{ISM.T=25;ISM.rb=8.0;buildPanel();t0=performance.now();};
+    b.children[1].onclick=()=>{ISM.T=1200;ISM.rb=4.5;buildPanel();t0=performance.now();};c.appendChild(b);
+    slider(c,'Time in interstellar space',1,3.3,0.02,Math.log10(ISM.T),v=>{const T=10**v;return T>=1000?(T/1000).toFixed(2)+' Gyr':T.toFixed(0)+' Myr';},v=>{ISM.T=10**v;setNums();drawTL();});
+    slider(c,'Birthplace: distance from Galactic centre',3,12,0.1,ISM.rb,v=>v.toFixed(1)+' kpc',v=>{ISM.rb=v;setNums();});
+  }else if(p.ctrl==='tem'){
+    slider(c,'Cut height above the sphere’s centre',0,1,0.01,TEMP.z,v=>`${(v*(TEMP.rc+TEMP.rim)).toFixed(3)} µm`,v=>{TEMP.z=v;setNums2();});
+    slider(c,'True core diameter',0.3,1.2,0.005,TEMP.rc*2,v=>v.toFixed(3)+' µm',v=>{TEMP.rc=v/2;setNums2();});
+    slider(c,'True rim thickness',0.03,0.4,0.0025,TEMP.rim,v=>v.toFixed(3)+' µm',v=>{TEMP.rim=v;setNums2();});
+    const b=document.createElement('div');b.className='btns';b.innerHTML='<button>Aperture on core</button><button>Aperture on rim</button><button>Vivian (central cut)</button>';
+    b.children[0].onclick=()=>TEMP.ap='core';b.children[1].onclick=()=>TEMP.ap='rim';
+    b.children[2].onclick=()=>{Object.assign(TEMP,{rc:0.3375,rim:0.1125,z:0});buildPanel();};c.appendChild(b);
+  }
+  if(p.ctrl==='tem')setNums2();else setNums();
+}
+function sliceGeom(){const Rt=TEMP.rc+TEMP.rim,z=TEMP.z*Rt;const D=2*Math.sqrt(Math.max(0,Rt*Rt-z*z)),d=2*Math.sqrt(Math.max(0,TEMP.rc**2-z*z));return{Rt,z,D,d,rim:(D-d)/2};}
+function setNums2(){const g=sliceGeom();const el=$('#nums');if(!el)return;const base=[...PANEL.tem.nums()];
+  base.push(['This cut: slice diameter',`${g.D.toFixed(3)} µm`],['Apparent core diameter',g.d>0?`${g.d.toFixed(3)} µm`:'none (rim only)'],['Apparent rim',`${(g.rim+1e-9).toFixed(3)} µm (true ${TEMP.rim.toFixed(3)})`],['Rim / slice radius',`${(2*g.rim/g.D).toFixed(2)} (true ${(TEMP.rim/g.Rt).toFixed(2)})`]);
+  el.innerHTML=base.map(([a,b])=>`<span>${a}</span><b>${b}</b>`).join('');}
+
+// ---------- canvases ----------
+const stage=$('#stage'),S=stage.getContext('2d'),tl=$('#tl'),TL=tl.getContext('2d');
+let W=0,H=0,TW=0,TH=0;
+function fit(){const dpr=Math.min(2,window.devicePixelRatio||1);
+  W=stage.clientWidth;H=stage.clientHeight;stage.width=W*dpr;stage.height=H*dpr;S.setTransform(dpr,0,0,dpr,0,0);
+  TW=tl.clientWidth;TH=tl.clientHeight;tl.width=TW*dpr;tl.height=TH*dpr;TL.setTransform(dpr,0,0,dpr,0,0);drawTL();}
+new ResizeObserver(fit).observe($('#stagebox'));window.addEventListener('resize',fit);
+
+// ---------- timeline ----------
+const tlX=ago=>{const l=Math.log10(Math.max(1,ago));return 24+(TW-48)*(1-l/10);};
+function drawTL(){const c=TL;if(!TW)return;c.clearRect(0,0,TW,TH);c.fillStyle='#0f131a';c.fillRect(0,0,TW,TH);
+  const y=TH-20;c.strokeStyle='#3a4150';c.lineWidth=1;c.beginPath();c.moveTo(24,y);c.lineTo(TW-24,y);c.stroke();
+  const labs=['10 Gyr','1 Gyr','100 Myr','10 Myr','1 Myr','100 kyr','10 kyr','1 kyr','100 yr','10 yr','1 yr'];
+  for(let e=10;e>=0;e--){const x=tlX(10**e);c.beginPath();c.moveTo(x,y-3);c.lineTo(x,y+3);c.stroke();if(TW>700||e%2===0)txt(c,labs[10-e],x,y+15,{align:'center',size:10.5,color:'#8b8576'});}
+  txt(c,'years before 2026 (log scale) · click a stop',TW/2,11,{align:'center',size:10.5,color:'#8b8576'});
+  STOPS.forEach((s,i)=>{const row=i%2?y-14:y-30,col=i===cur?'#e6a96c':'#7fc8d6';
+    if(s.span){const[a,b]=s.span();c.strokeStyle=col;c.globalAlpha=.5;c.lineWidth=3;c.beginPath();c.moveTo(tlX(a),row);c.lineTo(tlX(b),row);c.stroke();c.globalAlpha=1;}
+    const x=tlX(s.ago());c.fillStyle=col;circle(c,x,row,i===cur?8:6.5);c.fill();txt(c,String(i+1),x,row+0.5,{align:'center',base:'middle',size:10,w:700,color:'#10131a'});});
+}
+tl.addEventListener('click',e=>{const r=tl.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=-1,bd=1e9;
+  STOPS.forEach((s,i)=>{const row=i%2?TH-34:TH-50;const d=Math.hypot(tlX(s.ago())-mx,(row-my)*0.6);if(d<bd){bd=d;best=i;}});if(bd<30)go(best);});
+
+// ---------- stop 1: birth ----------
+const BIRTH=(()=>{const rnd=mulberry32(11),seeds=[];
+  for(let i=0;i<17;i++)seeds.push({x:(rnd()-.5)*17,y:(rnd()-.5)*11,t0:rnd()*6,ang:rnd()*PI,pent:rnd()<.4});
+  seeds.forEach(s=>{let m=1e9;seeds.forEach(o=>{if(o!==s)m=Math.min(m,Math.hypot(o.x-s.x,o.y-s.y));});s.stop=clamp(0.52*m,1.1,2.6);});
+  const atoms=[...Array(650)].map(()=>({x:(rnd()-.5)*19,y:(rnd()-.5)*13,p:rnd()*TAU,q:rnd()*TAU}));
+  const gran=[...Array(60)].map(()=>({a:rnd(),r:rnd(),s:0.5+rnd()}));return{seeds,atoms,gran};})();
+function hexPatch(c,cx,cy,R,b,ang){c.save();circle(c,cx,cy,R);c.clip();c.translate(cx,cy);c.rotate(ang);
+  const dx=Math.sqrt(3)*b,dy=1.5*b,n=Math.ceil(R/dy)+1,m=Math.ceil(R/dx)+1;c.beginPath();
+  for(let j=-n;j<=n;j++)for(let i=-m;i<=m;i++){const x=i*dx+(j&1?dx/2:0),y=j*dy;if(x*x+y*y>(R+b)*(R+b))continue;
+    for(let k=0;k<6;k++){const a=PI/6+k*PI/3,a2=a+PI/3;if(k===0)c.moveTo(x+b*Math.cos(a),y+b*Math.sin(a));c.lineTo(x+b*Math.cos(a2),y+b*Math.sin(a2));}}
+  c.stroke();c.restore();}
+function drawBirth(c,w,h,t){
+  const T=t%28;
+  if(T<8){
+    const g=c.createLinearGradient(0,0,0,h);g.addColorStop(0,'#12070a');g.addColorStop(1,'#3b0f0a');c.fillStyle=g;c.fillRect(0,0,w,h);
+    const R=h*1.6,cx=w/2,cy=h*0.62+R;const sg=c.createRadialGradient(cx,cy,R*0.8,cx,cy,R*1.06);sg.addColorStop(0,'#ff9a4a');sg.addColorStop(0.92,'#d9482a');sg.addColorStop(1,'rgba(150,30,20,0)');
+    c.fillStyle=sg;circle(c,cx,cy,R*1.06);c.fill();
+    BIRTH.gran.forEach(q=>{const a=-PI/2+(q.a-.5)*0.9,rr=R*(0.985-q.r*0.02);const x=cx+rr*Math.cos(a),y=cy+rr*Math.sin(a);
+      glow(c,x,y,q.s*30*(1+0.15*Math.sin(t*0.7+q.a*20)),'rgba(255,210,140,A)',0.25);});
+    // carbon atoms rising (dredge-up hint)
+    for(let i=0;i<70;i++){const u=((i*0.137+t*0.05)%1);const x=w*(0.1+0.8*((i*0.618)%1)),y=h*0.62-u*h*0.45;c.fillStyle=`rgba(255,235,200,${0.5*(1-u)})`;circle(c,x,y,1.6);c.fill();}
+    const u=clamp((T-1.5)/5,0,1),dx=w*0.5,dy=h*0.33;glow(c,dx,dy,10+u*50,'rgba(255,190,120,A)',0.5);c.fillStyle='#1d1510';circle(c,dx,dy,3+u*14);c.fill();c.strokeStyle='#ffcf8a';c.lineWidth=1.5;c.stroke();
+    if(T>6.3){c.strokeStyle=`rgba(255,220,170,${clamp((8-T)/1.7,0,1)})`;c.lineWidth=2;circle(c,dx,dy,(T-6.3)*h*0.5);c.stroke();}
+    txt(c,'AGB photosphere: 2500–2800 K, carbon outnumbers oxygen',w/2,h*0.7+20,{align:'center',size:14,shadow:1});
+    txt(c,'a liquid carbon nanodroplet forms and grows',dx,dy-30-u*14,{align:'center',size:13,color:'#ffd9a8',shadow:1});
+    txt(c,'(not to scale)',w-12,h-10,{align:'right',size:11,color:'#b99b80'});
+  }else{
+    const u=T-8,s=Math.min(w/18,h/12.5),cx=w/2,cy=h/2;
+    c.fillStyle='#1c120c';c.fillRect(0,0,w,h);glow(c,cx,cy,Math.max(w,h)*0.7,'rgba(120,60,25,A)',0.6);
+    const pr=BIRTH.seeds.map(sd=>clamp((u-sd.t0)*0.33,0,sd.stop));
+    const inside=(x,y)=>BIRTH.seeds.some((sd,i)=>pr[i]>0&&Math.hypot(x-sd.x,y-sd.y)<pr[i]);
+    BIRTH.atoms.forEach(a=>{const x=a.x+0.25*Math.sin(t*3+a.p),y=a.y+0.25*Math.cos(t*2.6+a.q);if(inside(x,y))return;c.fillStyle='rgba(255,200,140,0.75)';circle(c,cx+x*s,cy+y*s,1.8);c.fill();});
+    c.lineWidth=1;
+    BIRTH.seeds.forEach((sd,i)=>{const r=pr[i];if(u<sd.t0)return;const X=cx+sd.x*s,Y=cy+sd.y*s;
+      if(r<=0.05){c.strokeStyle='#ffe0a0';circle(c,X,Y,4);c.stroke();return;}
+      c.fillStyle=sd.pent?'rgba(255,120,90,0.10)':'rgba(255,220,150,0.08)';circle(c,X,Y,r*s);c.fill();
+      c.strokeStyle=sd.pent?'rgba(255,160,120,0.9)':'rgba(255,224,160,0.85)';hexPatch(c,X,Y,r*s,0.142*s,sd.ang);
+      if(sd.pent){const g=c.createRadialGradient(X,Y,0,X,Y,r*s);g.addColorStop(0,'rgba(255,255,255,0.35)');g.addColorStop(1,'rgba(255,255,255,0)');c.fillStyle=g;circle(c,X,Y,r*s);c.fill();
+        c.fillStyle='#ff7a5a';c.beginPath();for(let k=0;k<5;k++){const a=sd.ang+k*TAU/5;c[k?'lineTo':'moveTo'](X+0.14*s*Math.cos(a),Y+0.14*s*Math.sin(a));}c.closePath();c.fill();}
+      if(r>=sd.stop-0.01){c.strokeStyle='rgba(255,255,255,0.25)';circle(c,X,Y,r*s);c.stroke();}});
+    scaleBar(c,20,h-24,2*s,'2 nm');
+    const lab=u<2?'inside the droplet: hot carbon chains and loops':u<7?'5-rings seed pentacones (red), 6-rings seed flat graphene sheets':u<14?'sheets grow until they bump into each other: ~600 atoms, ~4.5 nm across':'frozen: a solid core of unlayered graphene, 0.675 µm across';
+    txt(c,lab,w/2,28,{align:'center',size:15,shadow:1,color:'#ffe2b8'});
+    txt(c,'schematic: atoms ~0.14 nm apart',w-12,h-10,{align:'right',size:11,color:'#b99b80'});
+  }
+}
+
+// ---------- plotting ----------
+function plot(c,bx,by,bw,bh,o){c.save();c.fillStyle='rgba(15,19,26,0.85)';c.fillRect(bx,by,bw,bh);c.strokeStyle='#2f3644';c.strokeRect(bx+.5,by+.5,bw,bh);
+  const L=bx+46,R=bx+bw-10,T=by+22,B=by+bh-26;const X=x=>L+(R-L)*Math.log10(x)/2;
+  const Y=v=>{if(o.ylog){const a=Math.log10(o.ylo),b=Math.log10(o.yhi);return B-(B-T)*(Math.log10(Math.max(v,o.ylo))-a)/(b-a);}return B-(B-T)*(v-o.ylo)/(o.yhi-o.ylo);};
+  c.strokeStyle='#2a303c';c.lineWidth=1;[1,2,5,10,20,50,100].forEach(x=>{c.beginPath();c.moveTo(X(x),T);c.lineTo(X(x),B);c.stroke();txt(c,String(x),X(x),B+13,{align:'center',size:10,color:'#8b8576'});});
+  txt(c,'distance from star centre, R / R★',(L+R)/2,B+24,{align:'center',size:10,color:'#8b8576'});
+  (o.yt||[]).forEach(v=>{c.beginPath();c.moveTo(L,Y(v));c.lineTo(R,Y(v));c.stroke();txt(c,o.yf?o.yf(v):String(v),L-4,Y(v)+3,{align:'right',size:10,color:'#8b8576'});});
+  txt(c,o.title,L,by+14,{size:11.5,w:600,color:'#ece6d9'});
+  (o.refs||[]).forEach(r=>{c.setLineDash([5,4]);c.strokeStyle=r.color;c.beginPath();c.moveTo(L,Y(r.v));c.lineTo(R,Y(r.v));c.stroke();c.setLineDash([]);txt(c,r.label,R-2,Y(r.v)-4,{align:'right',size:10,color:r.color});});
+  let lx=L+150;o.series.forEach(s=>{c.strokeStyle=s.color;c.lineWidth=2;c.setLineDash(s.dash||[]);c.beginPath();let st=false;
+    o.data.forEach(d=>{const y=s.f(d);if(!isFinite(y))return;const px=X(d.x),py=clamp(Y(y),T,B);if(!st){c.moveTo(px,py);st=true;}else c.lineTo(px,py);});c.stroke();c.setLineDash([]);
+    txt(c,s.label,lx,by+14,{size:10.5,color:s.color});lx+=c.measureText(s.label).width+14;});
+  if(o.cursor){c.strokeStyle='rgba(255,230,180,0.6)';c.beginPath();c.moveTo(X(o.cursor),T);c.lineTo(X(o.cursor),B);c.stroke();}
+  c.restore();}
+
+// ---------- stop 2: rim race ----------
+function rimAt(x){const o=RIM.out;let lo=0,hi=o.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(o[m].x<=x)lo=m;else hi=m;}return o[lo];}
+function drawRim(c,w,h,t){
+  c.fillStyle='#07080c';c.fillRect(0,0,w,h);
+  const p=clamp((t%26)/22,0,1),xNow=Math.min(10**(2*ease(p)*0.999+0.0005),RIM.last.x),st=rimAt(xNow);
+  const top=h*0.5,L=w*0.07,Rr=w*0.97,X=x=>L+(Rr-L)*Math.log10(x)/2,midY=top*0.55;
+  // density shading
+  for(let px=L;px<Rr;px+=3){const x=10**(2*(px-L)/(Rr-L));const d=rimAt(x);const a=clamp((Math.log10(d.rho)+15)/7,0,1);c.fillStyle=`rgba(${d.Td<P2.tc?'110,150,190':'190,90,50'},${0.08+0.35*a})`;c.fillRect(px,16,3,top-32);}
+  const col=`rgb(255,${Math.round(110+60*(RIM.T-2500)/300)},70)`;const sr=h*1.2;
+  const sg=c.createRadialGradient(L-sr,midY,sr*0.9,L-sr,midY,sr*1.04);sg.addColorStop(0,col);sg.addColorStop(1,'rgba(200,60,30,0)');c.fillStyle=sg;circle(c,L-sr,midY,sr*1.04);c.fill();
+  c.fillStyle=col;circle(c,L-sr,midY,sr);c.fill();
+  const xc=X(RIM.xcond);c.setLineDash([4,4]);c.strokeStyle='#9cc7e8';c.beginPath();c.moveTo(xc,16);c.lineTo(xc,top-16);c.stroke();c.setLineDash([]);
+  txt(c,'graphite can grow →',xc+5,30,{size:11.5,color:'#9cc7e8'});
+  // ordinary dust
+  for(let k=0;k<170;k++){const u=((k*0.6180339)%1+t*0.012*(1+(k%5)*0.1))%1;const x=10**(2*u);if(x<1.0)continue;const d=rimAt(x);
+    const y=midY+((k*0.37)%1-.5)*(top-60);const r=d.x>RIM.xcond?0.8+2.4*clamp(d.a/0.12e-6,0,1):0.7;c.fillStyle=d.x>RIM.xcond?'rgba(200,215,230,0.7)':'rgba(255,170,120,0.35)';circle(c,X(x),y,r);c.fill();}
+  // Vivian
+  const vx=X(xNow);glow(c,vx,midY,22,'rgba(255,220,120,A)',0.9);c.fillStyle='#ffd27a';circle(c,vx,midY,5);c.fill();
+  txt(c,'Vivian',vx,midY-14,{align:'center',size:12,w:600,color:'#ffd27a',shadow:1});
+  // inset cross-section
+  const ix=w-92,iy=top-80,k=36/0.3375,rimpx=clamp(st.rim*1e6*k,0,60);
+  c.fillStyle='rgba(10,12,16,0.85)';c.fillRect(ix-82,iy-70,164,148);c.strokeStyle='#2f3644';c.strokeRect(ix-82,iy-70,164,148);
+  c.fillStyle='#8f8a80';circle(c,ix,iy,36+rimpx);c.fill();c.strokeStyle='rgba(40,40,40,0.6)';c.lineWidth=1;
+  for(let r=36;r<36+rimpx;r+=2.2){circle(c,ix,iy,r);c.stroke();}
+  c.fillStyle='#4d4943';circle(c,ix,iy,36);c.fill();
+  const rr=mulberry32(5);for(let i=0;i<70;i++){const a=rr()*TAU,r=rr()*33;c.strokeStyle='rgba(150,140,125,0.6)';c.beginPath();c.arc(ix+r*Math.cos(a),iy+r*Math.sin(a),2+rr()*3,a,a+1.6);c.stroke();}
+  txt(c,`rim ${(st.rim*1e6).toFixed(3)} µm`,ix,iy+66,{align:'center',size:12,color:'#ffd27a'});
+  txt(c,'cross-section',ix,iy-56,{align:'center',size:11,color:'#a69f8f'});
+  // readout
+  const yrs=st.t/K.yr;txt(c,`t = ${yrs<0.1?(yrs*365.25).toFixed(1)+' days':yrs.toFixed(2)+' yr'}   R = ${xNow.toFixed(2)} R★   speed ${(st.v/1e3).toFixed(1)} km/s   drift ${(st.vd/1e3).toFixed(st.vd<100?3:1)} km/s   push ${st.arad.toPrecision(2)} m/s²`,12,top-4,{size:12,color:'#ece6d9',shadow:1});
+  // plots
+  const pw=(w-30)/2,ph=h-top-14;
+  plot(c,10,top+6,pw,ph,{title:'Rim thickness, µm',data:RIM.out,ylo:0,yhi:Math.max(0.15,RIM.last.rim*1e6*1.15,RIM.aSmall*1e6*1.15),yt:[0,0.05,0.1,0.15,0.2,0.3,0.4,0.6,0.8,1].filter(v=>v<=Math.max(0.15,RIM.last.rim*1e6*1.15,RIM.aSmall*1e6*1.15)),
+    series:[{label:'Vivian’s rim',color:'#ffd27a',f:d=>d.rim*1e6},{label:'thermal-only part',color:'#d9a05a',dash:[4,3],f:d=>d.rth*1e6},{label:'ordinary grain radius',color:'#9cc7e8',f:d=>d.a*1e6}],
+    refs:[{v:RIM_OBS,label:'Vivian (TEM) ≈ 0.11',color:'#e07b6a'}],cursor:xNow});
+  const vmax=Math.max(30,RIM.last.v/1e3*1.1);
+  plot(c,20+pw,top+6,pw,ph,{title:'Speed, km/s',data:RIM.out,ylo:0,yhi:vmax,yt:[0,10,20,30,40,50,60,80].filter(v=>v<=vmax),
+    series:[{label:'Vivian',color:'#ffd27a',f:d=>d.v/1e3},{label:'gas',color:'#9cc7e8',f:d=>d.vg/1e3},{label:'drift',color:'#e07b6a',dash:[4,3],f:d=>d.vd/1e3}],cursor:xNow});
+}
+
+// ---------- stop 3: galaxy ----------
+const GAL=(()=>{const rnd=mulberry32(3),stars=[];for(let i=0;i<3400;i++){const arm=i%2;let r=-3.2*Math.log(1-rnd()*0.97);if(r<0.2)r=0.2+rnd()*1.5;r=Math.min(r,15);
+  const th=Math.log(r/0.8)/Math.tan(0.38)+arm*PI+(rnd()-.5)*(r<2.5?6.3:0.8);const hot=rnd()<0.15;stars.push({r,th,s:hot?1.6:0.9+rnd()*0.6,c:hot?'190,215,255':(rnd()<.5?'255,226,190':'230,230,240'),a:0.25+rnd()*0.6});}return{stars};})();
+const vkpc=220*1.0227e-3; // kpc per Myr
+function drawISM(c,w,h,t){
+  c.fillStyle='#04050a';c.fillRect(0,0,w,h);
+  const cx=w/2,cy=h*0.53,sc=Math.min(w,h)*0.47/10,u=clamp((t%24)/19,0,1),tau=u*ISM.T;
+  // frame co-rotating with the Sun (8.2 kpc); arm pattern drifts slowly
+  const wS=vkpc/8.2,pat=-0.004*tau;
+  glow(c,cx,cy,sc*4,'rgba(255,220,170,A)',0.5);
+  GAL.stars.forEach(s=>{const a=s.th+pat;c.fillStyle=`rgba(${s.c},${s.a})`;c.fillRect(cx+s.r*sc*Math.cos(a),cy+s.r*sc*Math.sin(a)*0.92,s.s,s.s);});
+  // Vivian track: radius drifts rb -> 8.2, angle by flat rotation; Sun fixed at top in this frame
+  const N=240,T=ISM.T,rb=ISM.rb;const pts=[];let phi=0;
+  for(let i=0;i<=N;i++){const tt=T*i/N,r=rb+(8.2-rb)*tt/T;pts.push({tt,r,phi});phi+=vkpc/r*T/N;}
+  const off=-PI/2-(pts[N].phi-wS*T);
+  const P=i=>{const q=pts[i];const a=q.phi-wS*q.tt+off;return[cx+q.r*sc*Math.cos(a),cy+q.r*sc*Math.sin(a)*0.92];};
+  const n=Math.round(u*N);c.strokeStyle='rgba(255,210,122,0.75)';c.lineWidth=1.5;c.beginPath();for(let i=0;i<=n;i++){const[x,y]=P(i);i?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();
+  // birth star co-rotates at rb
+  const ab=pts[0].phi+off+(vkpc/rb-wS)*tau;const bx=cx+rb*sc*Math.cos(ab),by=cy+rb*sc*Math.sin(ab)*0.92;
+  const age=tau;const isWD=age>3;glow(c,bx,by,isWD?6:14,isWD?'rgba(200,220,255,A)':'rgba(255,120,60,A)',0.9);
+  txt(c,isWD?'parent star, now a white dwarf':'parent AGB star',bx+10,by-8,{size:11,color:isWD?'#c8dcff':'#ff9a6a',shadow:1});
+  const[vx,vy]=P(n);glow(c,vx,vy,12,'rgba(255,220,120,A)',1);c.fillStyle='#ffd27a';circle(c,vx,vy,3);c.fill();
+  txt(c,'Vivian',vx+8,vy+14,{size:12,w:600,color:'#ffd27a',shadow:1});
+  const sx=cx,sy=cy-8.2*sc*0.92;c.strokeStyle='#9cc7e8';circle(c,sx,sy,7);c.stroke();txt(c,'where the Sun will form',sx,sy-12,{align:'center',size:11,color:'#9cc7e8',shadow:1});
+  if(T<60&&u>0.82&&u<0.97){const k=(u-0.82)/0.15;glow(c,sx+18,sy+26,10+k*60,'rgba(200,230,255,A)',1-k);txt(c,'a nearby supernova shock?',sx+30,sy+60,{size:11,color:'#c8dcff',shadow:1});}
+  if(u>=1){glow(c,sx,sy,18,'rgba(255,240,200,A)',0.8);}
+  scaleBar(c,16,h-20,5*sc,'5 kpc');
+  txt(c,`${tau>=1000?(tau/1000).toFixed(2)+' Gyr':tau.toFixed(tau<10?1:0)+' Myr'} since ejection · ${(tau/230).toFixed(2)} galactic orbits`,12,24,{size:14,shadow:1});
+  txt(c,'top view, turning with the Sun’s orbit (230 Myr)',w-12,24,{align:'right',size:11,color:'#a69f8f'});
+}
+
+// ---------- stop 4: solar nebula ----------
+const NEB=(()=>{const rnd=mulberry32(9),pp=[];const cl=[...Array(9)].map((_,i)=>({r:0.28+0.08*i+rnd()*0.04,a:rnd()*TAU}));
+  for(let i=0;i<1000;i++){const u=rnd(),v=rnd(),ww=rnd();const r=Math.cbrt(ww),th=Math.acos(2*u-1),ph=TAU*v;
+    const dr=0.12+0.88*Math.sqrt(rnd());pp.push({x:r*Math.sin(th)*Math.cos(ph),y:r*Math.cos(th),z:r*Math.sin(th)*Math.sin(ph),dr,da:rnd()*TAU,cl:Math.floor(rnd()*9),j:rnd()});}
+  pp[0].cl=5;pp[0].dr=cl[5].r;return{pp,cl};})();
+function drawNeb(c,w,h,t){
+  c.fillStyle='#05060b';c.fillRect(0,0,w,h);const T=t%24,cx=w/2,cy=h/2,sc=Math.min(w,h)*0.42;
+  if(T<16){const col=ease(T/7),clump=ease((T-9)/6),spin=T*0.25*col;
+    if(T>4.5)glow(c,cx,cy,sc*0.25*ease((T-4.5)/3),'rgba(255,230,170,A)',1);
+    NEB.pp.forEach((p,i)=>{const da=p.da+spin/Math.pow(p.dr,1.5);let dx=p.dr*Math.cos(da),dz=p.dr*Math.sin(da);
+      const cl=NEB.cl[p.cl],ca=cl.a+spin/Math.pow(cl.r,1.5);const kx=cl.r*Math.cos(ca),kz=cl.r*Math.sin(ca);
+      const pull=clamp(clump*(0.6+0.4*p.j)*(i===0?1:0.9),0,1);dx=lerp(dx,kx+(p.j-.5)*0.02,pull);dz=lerp(dz,kz+(p.j-.5)*0.02,pull);
+      const x=lerp(p.x,dx,col),y=lerp(p.y,0,col),z=lerp(p.z,dz,col);const X=cx+x*sc,Y=cy+(y*0.9+z*0.32)*sc;
+      if(i===0){glow(c,X,Y,12,'rgba(255,220,120,A)',1);c.fillStyle='#ffd27a';circle(c,X,Y,2.5);c.fill();txt(c,'Vivian',X+8,Y-8,{size:12,w:600,color:'#ffd27a',shadow:1});}
+      else{c.fillStyle=`rgba(${T>4.5?'235,210,180':'190,180,210'},0.8)`;c.fillRect(X-1,Y-1,2.2,2.2);}});
+    txt(c,T<5?'a cold cloud of gas and dust collapses':T<9?'the Sun lights up inside a spinning disk':'dust sticks to dust: planetesimals grow',w/2,30,{align:'center',size:15,shadow:1});
+  }else{const u=ease((T-16)/2),R=Math.min(w,h)*0.36;glow(c,w/2,h/2,R*1.4,'rgba(80,90,120,A)',0.35*u);
+    c.fillStyle='#2b2724';circle(c,w/2,h/2,R);c.fill();const rr=mulberry32(4);
+    for(let i=0;i<90;i++){const a=rr()*TAU,r=Math.sqrt(rr())*R*0.95,s=3+rr()*12;c.fillStyle=`rgba(${120+rr()*60},${110+rr()*50},${90+rr()*40},0.85)`;circle(c,w/2+r*Math.cos(a),h/2+r*Math.sin(a),s);c.fill();}
+    c.strokeStyle='rgba(90,160,230,0.55)';c.lineWidth=2;for(let i=0;i<14;i++){c.beginPath();let x=w/2+(rr()-.5)*R*1.4,y=h/2+(rr()-.5)*R*1.4;c.moveTo(x,y);for(let k=0;k<6;k++){x+=(rr()-.5)*40;y+=(rr()-.5)*40;c.lineTo(x,y);}c.stroke();}
+    const vx=w/2+R*0.22,vy=h/2-R*0.18;glow(c,vx,vy,14,'rgba(255,220,120,A)',1);c.fillStyle='#ffd27a';circle(c,vx,vy,3);c.fill();txt(c,'Vivian, in the fine-grained matrix',vx+10,vy-10,{size:12,color:'#ffd27a',shadow:1});
+    txt(c,'Murchison’s parent asteroid (cutaway): chondrules, matrix, and water-altered veins',w/2,30,{align:'center',size:15,shadow:1});
+    txt(c,'warmed by short-lived radioactivity, never melted',w/2,h-18,{align:'center',size:12,color:'#a69f8f'});}
+}
+
+// ---------- stop 5: long sleep / stop 6 breakup (orbits) ----------
+const EARTH_EV=[[4.5e9,'the Moon forms'],[4.4e9,'oldest surviving zircon crystals'],[3.7e9,'early life on Earth'],[2.4e9,'oxygen builds up in the air'],[5.4e8,'the Cambrian burst of animal life'],[2.3e8,'first dinosaurs'],[6.6e7,'the dinosaurs’ extinction'],[6.5e6,'earliest hominins'],[1.9e6,'Homo erectus']];
+const LATE_EV=[[8e5,'fire in the hands of Homo erectus'],[1.15e5,'the last glaciation begins'],[1.17e4,'the current interglacial; farming begins'],[1.5e3,'Europe’s early middle ages'],[NOW-1895,'radio is invented'],[NOW-1969,'arrival']];
+function orbitXY(a,e,M){let E=M;for(let i=0;i<6;i++)E=M+e*Math.sin(E);return[a*(Math.cos(E)-e),a*Math.sqrt(1-e*e)*Math.sin(E)];}
+function drawSys(c,w,h,sc,cx,cy){glow(c,cx,cy,22,'rgba(255,230,160,A)',1);c.fillStyle='#ffe6a0';circle(c,cx,cy,5);c.fill();
+  [[1,'#7fb6ff','Earth'],[1.52,'#d9785a','Mars'],[5.2,'#d8b48a','Jupiter']].forEach(([a,col,n])=>{c.strokeStyle='rgba(160,170,190,0.25)';c.lineWidth=1;circle(c,cx,cy,a*sc);c.stroke();});
+  c.fillStyle='rgba(170,160,150,0.18)';const rr=mulberry32(2);for(let i=0;i<500;i++){const a=rr()*TAU,r=(2.1+rr()*1.2)*sc;c.fillRect(cx+r*Math.cos(a),cy+r*Math.sin(a),1.3,1.3);}}
+function drawSleep(c,w,h,t){c.fillStyle='#04050a';c.fillRect(0,0,w,h);const u=clamp((t%26)/22,0,1),ago=10**lerp(Math.log10(4.56e9),Math.log10(8e5),ease(u));
+  const sc=Math.min(w*0.5,h*0.62)/5.5,cx=w*0.36,cy=h*0.5;drawSys(c,w,h,sc,cx,cy);const tt=t*0.6;
+  const E=[cx+sc*Math.cos(tt*1.6),cy+sc*Math.sin(tt*1.6)];c.fillStyle='#7fb6ff';circle(c,E[0],E[1],4);c.fill();
+  const J=[cx+5.2*sc*Math.cos(tt*0.14),cy+5.2*sc*Math.sin(tt*0.14)];c.fillStyle='#d8b48a';circle(c,J[0],J[1],5);c.fill();
+  const[px,py]=orbitXY(2.7,0.08,tt*0.36);glow(c,cx+px*sc,cy+py*sc,12,'rgba(255,220,120,A)',0.9);c.fillStyle='#b4a38a';circle(c,cx+px*sc,cy+py*sc,4);c.fill();
+  txt(c,'parent asteroid (Vivian inside)',cx+px*sc+10,cy+py*sc-8,{size:11.5,color:'#ffd27a',shadow:1});
+  txt(c,`${fmtAgo(ago)} ago`,w*0.73,48,{align:'center',size:24,serif:1,color:'#e6a96c'});txt(c,'meanwhile, on Earth:',w*0.73,76,{align:'center',size:12,color:'#a69f8f'});
+  let y=104;EARTH_EV.forEach(([a,s])=>{if(ago<=a*1.0001){txt(c,`${fmtAgo(a)}: ${s}`,w*0.73,y,{align:'center',size:13,color:'#ece6d9'});y+=22;}});}
+function drawBreak(c,w,h,t){c.fillStyle='#04050a';c.fillRect(0,0,w,h);const T=t%26,sc=Math.min(w*0.5,h*0.62)/4.2,cx=w*0.36,cy=h*0.5;drawSys(c,w,h,sc,cx,cy);
+  const tt=t*0.6;const E=[cx+sc*Math.cos(tt*1.6),cy+sc*Math.sin(tt*1.6)];c.fillStyle='#7fb6ff';circle(c,E[0],E[1],4);c.fill();
+  if(T<5){const[px,py]=orbitXY(2.7,0.08,1.2);const X=cx+px*sc,Y=cy+py*sc;const k=T/3;
+    if(T<3){c.fillStyle='#b4a38a';circle(c,X,Y,8);c.fill();c.fillStyle='#8f8a80';circle(c,X+(1-k)*120,Y-(1-k)*70,3);c.fill();}
+    else{const q=(T-3)/2;glow(c,X,Y,10+q*50,'rgba(255,240,200,A)',1-q);const rr=mulberry32(8);for(let i=0;i<24;i++){const a=rr()*TAU,s=(10+rr()*40)*q;c.fillStyle=i===0?'#ffd27a':'#a8998a';circle(c,X+s*Math.cos(a),Y+s*Math.sin(a),i===0?3:1.5+rr()*2);c.fill();}}
+    txt(c,'a collision breaks off metre-sized pieces',w/2,30,{align:'center',size:15,shadow:1});}
+  else{const u=ease((T-5)/12),a=lerp(2.7,1.9,u),e=lerp(0.08,0.55,u);c.strokeStyle='rgba(255,210,122,0.5)';c.beginPath();
+    for(let i=0;i<=120;i++){const[x,y]=orbitXY(a,e,i/120*TAU);const X=cx+x*sc,Y=cy+y*sc;i?c.lineTo(X,Y):c.moveTo(X,Y);}c.stroke();
+    const M=tt*1.6/Math.pow(a,1.5);const[x,y]=orbitXY(a,e,M);const X=cx+x*sc,Y=cy+y*sc,rs=Math.hypot(x,y);
+    glow(c,X,Y,10+12*clamp((1.4-rs)/0.6,0,1),rs<1.2?'rgba(255,150,80,A)':'rgba(255,220,120,A)',1);c.fillStyle='#ffd27a';circle(c,X,Y,3);c.fill();
+    for(let i=0;i<5;i++){const a2=t*7+i*1.3,l=16;const sx=X+Math.cos(a2)*30,sy=Y+Math.sin(a2)*30;c.strokeStyle='rgba(180,220,255,0.6)';c.beginPath();c.moveTo(sx,sy);c.lineTo(sx-Math.cos(a2)*l,sy-Math.sin(a2)*l);c.stroke();}
+    txt(c,'the meteoroid (cosmic rays now reach Vivian)',X+12,Y-10,{size:11.5,color:'#ffd27a',shadow:1});
+    txt(c,'nudged into an Earth-crossing orbit',w/2,30,{align:'center',size:15,shadow:1});
+    const ago=10**lerp(Math.log10(8e5),Math.log10(NOW-1969),ease((T-5)/18));txt(c,`${fmtAgo(ago)} ago`,w*0.76,64,{align:'center',size:22,serif:1,color:'#e6a96c'});
+    let yy=94;LATE_EV.forEach(([g,s])=>{if(ago<=g*1.0001){txt(c,`${fmtAgo(g)}: ${s}`,w*0.76,yy,{align:'center',size:13});yy+=22;}});}
+}
+
+// ---------- stop 7: the fall ----------
+function drawFall(c,w,h,t){const T=t%14;const g=c.createLinearGradient(0,0,0,h);g.addColorStop(0,'#5b8fc9');g.addColorStop(0.75,'#bcd7ee');g.addColorStop(0.751,'#8a8a55');g.addColorStop(1,'#5f6a3a');c.fillStyle=g;c.fillRect(0,0,w,h);
+  const gy=h*0.75;c.fillStyle='#6f6440';for(let i=0;i<14;i++){const x=w*0.15+i*14,s=8+(i%3)*4;c.fillRect(x,gy-s,10,s);}txt(c,'Murchison, Victoria',w*0.15,gy+18,{size:12,color:'#f4ecd0',shadow:1});
+  const p0=[w*0.98,h*0.04],p1=[w*0.42,h*0.48];const k=clamp(T/5,0,1);const hx=lerp(p0[0],p1[0],k),hy=lerp(p0[1],p1[1],k);
+  c.lineCap='round';for(let i=0;i<3;i++){c.strokeStyle=`rgba(240,240,240,${0.35-0.1*i})`;c.lineWidth=10+i*10;c.beginPath();c.moveTo(p0[0],p0[1]);c.lineTo(hx,hy);c.stroke();}
+  if(T<5){glow(c,hx,hy,46,'rgba(255,240,200,A)',1);c.fillStyle='#fff';circle(c,hx,hy,6);c.fill();}
+  else{const rr=mulberry32(6);for(let i=0;i<9;i++){const sx=(rr()-.5)*120,q=clamp((T-5)/4,0,1);const X=p1[0]+sx*q-20*q,Y=lerp(p1[1],gy-4,q*(0.8+0.2*rr()));
+      c.fillStyle='#2a2522';circle(c,X,Y,i===0?4:2.5);c.fill();if(q>=1){c.fillStyle='rgba(160,140,100,0.6)';circle(c,X,gy-2,8);c.fill();}}
+    if(T<6.5)glow(c,p1[0],p1[1],70,'rgba(255,250,230,A)',clamp((6.5-T)/1.5,0,1));}
+  txt(c,'28 September 1969, about 10:58 a.m.',16,28,{size:15,shadow:1});
+  // inset: temperature vs depth
+  const bx=w-300,by=h-210,bw=284,bh=196;c.fillStyle='rgba(12,14,20,0.88)';c.fillRect(bx,by,bw,bh);
+  const L=bx+40,R=bx+bw-12,Tt=by+24,B=by+bh-30,th=clamp(T,0,5),kap=6e-7;
+  const X=z=>L+(R-L)*z/20,Y=K2=>B-(B-Tt)*(K2-200)/1800;c.strokeStyle='#2a303c';[0,5,10,15,20].forEach(z=>{c.beginPath();c.moveTo(X(z),Tt);c.lineTo(X(z),B);c.stroke();txt(c,String(z),X(z),B+12,{align:'center',size:10,color:'#8b8576'});});
+  [500,1000,1500,2000].forEach(v=>{txt(c,String(v),L-4,Y(v)+3,{align:'right',size:10,color:'#8b8576'});});
+  c.strokeStyle='#ff9a5a';c.lineWidth=2;c.beginPath();for(let i=0;i<=100;i++){const z=i/5,zz=z*1e-3;const val=th>0?250+1550*erfc(zz/(2*Math.sqrt(kap*th))):250;i?c.lineTo(X(z),Y(val)):c.moveTo(X(z),Y(val));}c.stroke();
+  c.strokeStyle='#ffd27a';c.setLineDash([3,3]);c.beginPath();c.moveTo(R-4,Tt);c.lineTo(R-4,B);c.stroke();c.setLineDash([]);txt(c,'Vivian (deeper) →',R-8,Tt+12,{align:'right',size:10,color:'#ffd27a'});
+  txt(c,`temperature (K) vs depth (mm), t = ${th.toFixed(1)} s`,bx+8,by+15,{size:11,w:600});txt(c,'depth below the melting surface, mm',(L+R)/2,B+24,{align:'center',size:10,color:'#8b8576'});}
+function erfc(x){const t=1/(1+0.3275911*x);return t*(0.254829592+t*(-0.284496736+t*(1.421413741+t*(-1.453152027+t*1.061405429))))*Math.exp(-x*x);}
+
+// ---------- stop 8: Chicago & WashU ----------
+function drawChem(c,w,h,t){c.fillStyle='#0d1015';c.fillRect(0,0,w,h);const T=t%20;
+  const steps=['meteorite chunk','acids dissolve silicates','oxidisers clean up','density separation','size separation','graphite: ppm of the rock'];
+  const n=steps.length,bw=Math.min(150,(w*0.6-52)/3),cols=3;const k=Math.floor(T/2.4);
+  steps.forEach((s,i)=>{const col=i%cols,row=Math.floor(i/cols),x=16+col*(bw+12),y=50+row*(bw*0.9+30);const on=i<=k;
+    c.fillStyle=on?'#1b2230':'#13171f';c.strokeStyle=on?'#7fc8d6':'#2a303c';c.fillRect(x,y,bw,bw*0.9);c.strokeRect(x+.5,y+.5,bw,bw*0.9);
+    const bx=x+bw/2,by=y+bw*0.5;c.strokeStyle='#8fa6b5';c.beginPath();c.moveTo(bx-22,by-26);c.lineTo(bx-22,by+22);c.lineTo(bx+22,by+22);c.lineTo(bx+22,by-26);c.stroke();
+    if(on){const fill=i===0?0:0.7-0.1*i;c.fillStyle=`rgba(${i===1?'120,200,140':i===2?'210,150,90':'120,160,220'},0.35)`;c.fillRect(bx-21,by+22-44*Math.max(0.15,fill),42,44*Math.max(0.15,fill));
+      const ss=Math.max(1.5,14*(1-i/5));c.fillStyle=i===5?'#ffd27a':'#3a3530';circle(c,bx,by+16-ss,ss);c.fill();}
+    txt(c,`${i+1}. ${s}`,x+6,y+bw*0.9-8,{size:11,color:on?'#ece6d9':'#6b6658'});});
+  txt(c,'University of Chicago: what survives the acids',16,30,{size:15,shadow:1});
+  // right: neon & carbon
+  const rx=w*0.64,rw=w*0.34;txt(c,'Neon isotopes',rx,46,{size:13,w:600,color:'#7fc8d6'});
+  const bars=[['solar',[0.93,0.003,0.067]],['Ne-E(L)',[0.01,0.005,0.985]]];bars.forEach(([nm,v],j)=>{const y0=66+j*100;txt(c,nm+' neon',rx,y0+10,{size:12,w:600});
+    ['²⁰Ne','²¹Ne','²²Ne'].forEach((m,i)=>{const bwid=(rw-60)*v[i],yy=y0+18+i*22;c.fillStyle=i===2?'#ffd27a':'#9cc7e8';c.fillRect(rx+44,yy,Math.max(2,bwid),16);txt(c,m,rx+38,yy+12,{align:'right',size:11,color:'#a69f8f'});});});
+  const y2=280;txt(c,'Carbon isotopes, ¹²C/¹³C (schematic)',rx,y2,{size:13,w:600,color:'#7fc8d6'});
+  const L=rx+6,R=rx+rw-10,Y=y2+40,X=v=>L+(R-L)*Math.log10(v)/4;c.strokeStyle='#5a6070';c.beginPath();c.moveTo(L,Y);c.lineTo(R,Y);c.stroke();
+  [1,10,100,1000,10000].forEach(v=>{c.beginPath();c.moveTo(X(v),Y-4);c.lineTo(X(v),Y+4);c.stroke();txt(c,String(v),X(v),Y+16,{align:'center',size:10,color:'#8b8576'});});
+  c.fillStyle='rgba(255,210,122,0.35)';c.fillRect(X(4),Y-14,X(5000)-X(4),10);txt(c,'single presolar graphite grains span this range',(X(4)+X(5000))/2,Y-20,{align:'center',size:10.5,color:'#ffd27a'});
+  c.strokeStyle='#e07b6a';c.lineWidth=2;c.beginPath();c.moveTo(X(89),Y-26);c.lineTo(X(89),Y+6);c.stroke();c.lineWidth=1;txt(c,'solar 89',X(89),Y+30,{align:'center',size:11,color:'#e07b6a'});
+  txt(c,'Washington University: grain-by-grain isotopes',rx,y2+80,{size:12,color:'#a69f8f'});}
+
+// ---------- stop 9: TEM ----------
+let temCache={key:'',cv:null};
+function temImage(g,size){const key=[g.D,g.d,size].map(v=>v.toFixed(4)).join();if(temCache.key===key)return temCache.cv;
+  const cv=document.createElement('canvas');cv.width=cv.height=size;const c=cv.getContext('2d');const s=size/1.4,cx=size/2,cy=size/2;
+  c.fillStyle='#bcd6b4';c.fillRect(0,0,size,size);const rr=mulberry32(21);for(let i=0;i<1600;i++){c.fillStyle=`rgba(${rr()<.5?'90,120,85':'230,245,225'},0.08)`;c.fillRect(rr()*size,rr()*size,3,3);}
+  const Ro=g.D/2*s,Ri=g.d/2*s;c.fillStyle='#5f8a57';circle(c,cx,cy,Ro);c.fill();
+  c.lineWidth=1;for(let r=Ri;r<Ro;r+=1.6){c.strokeStyle=`rgba(${rr()<.5?'40,70,40':'130,170,120'},0.55)`;circle(c,cx,cy,r);c.stroke();}
+  if(Ri>0){c.fillStyle='#7aa671';circle(c,cx,cy,Ri);c.fill();for(let i=0;i<900;i++){const a=rr()*TAU,r=Math.sqrt(rr())*Ri*0.97;c.strokeStyle=`rgba(${rr()<.5?'50,85,48':'170,205,160'},0.6)`;c.beginPath();c.arc(cx+r*Math.cos(a),cy+r*Math.sin(a),1+rr()*2.5,a,a+1.2+rr());c.stroke();}}
+  c.strokeStyle='rgba(30,50,30,0.6)';c.lineWidth=2;circle(c,cx,cy,Ro);c.stroke();temCache={key,cv};return cv;}
+function drawTEM(c,w,h,t){c.fillStyle='#0b0d12';c.fillRect(0,0,w,h);const g=sliceGeom();
+  // left: sphere side view with slice plane
+  const lw=w*0.36,s=Math.min(lw,h*0.55)/(2*g.Rt*1.25),cx=lw/2+10,cy=h*0.36;
+  txt(c,'side view of the sphere and the cut',12,24,{size:13,w:600,color:'#7fc8d6'});
+  c.fillStyle='#8f8a80';circle(c,cx,cy,g.Rt*s);c.fill();c.fillStyle='#4d4943';circle(c,cx,cy,TEMP.rc*s);c.fill();
+  const zy=cy-g.z*s,tk=Math.max(2,0.07*s);c.fillStyle='rgba(127,200,214,0.55)';c.fillRect(cx-g.Rt*s*1.2,zy-tk/2,g.Rt*s*2.4,tk);
+  txt(c,'slice (<100 nm)',cx+g.Rt*s*1.2,zy-6,{align:'right',size:11,color:'#7fc8d6'});
+  const bar=0.5*s;scaleBar(c,cx-bar/2,cy+g.Rt*s+28,bar,'0.5 µm');
+  // microtome strip
+  const my=h*0.78;txt(c,'diamond knife → slices float on water → grid',12,my-34,{size:12,color:'#a69f8f'});
+  c.fillStyle='#2c4a63';c.fillRect(12,my-10,lw,30);const off=(t*30)%40;for(let i=0;i<8;i++){const x=40+i*40+off;if(x>lw)continue;c.fillStyle='rgba(220,210,170,0.8)';c.fillRect(x,my-6,32,6);c.fillStyle='rgba(80,70,60,0.8)';circle(c,x+16,my-3,2);c.fill();}
+  c.fillStyle='#d6dde6';c.beginPath();c.moveTo(12,my-14);c.lineTo(36,my-6);c.lineTo(12,my+2);c.fill();
+  // middle: TEM image
+  const ts=Math.min(w*0.36,h*0.62),tx=lw+24,ty=34;const img=temImage(g,Math.round(ts));c.drawImage(img,tx,ty,ts,ts);
+  txt(c,'TEM image of this slice',tx,ty-10,{size:13,w:600,color:'#7fc8d6'});const pxum=ts/1.4;scaleBar(c,tx+12,ty+ts-14,0.2*pxum,'0.2 µm');
+  // aperture marker
+  const ax=tx+ts/2+(TEMP.ap==='rim'?((g.D/2+Math.max(g.d/2,0))/2)*pxum:0),ay=ty+ts/2;c.strokeStyle='#ffd27a';c.lineWidth=1.5;circle(c,ax,ay,TEMP.ap==='rim'?Math.max(4,g.rim*pxum*0.45):Math.max(6,g.d/2*pxum*0.5));c.stroke();
+  // right: diffraction
+  const dw=Math.min(w-(tx+ts)-30,h*0.5),dx=tx+ts+16+dw/2,dy=34+dw/2;if(dw>80){
+    c.fillStyle='#000';c.fillRect(dx-dw/2,dy-dw/2,dw,dw);glow(c,dx,dy,dw*0.12,'rgba(255,255,255,A)',0.9);const kk=dw*0.42/(1/0.123);
+    const ring=(d,a,wd)=>{c.strokeStyle=`rgba(230,240,255,${a})`;c.lineWidth=wd;circle(c,dx,dy,kk/d);c.stroke();};
+    ring(0.213,0.75,2.5);ring(0.123,0.55,2.5);
+    if(TEMP.ap==='rim'||g.d<=0){c.strokeStyle='rgba(255,240,200,0.95)';c.lineWidth=4;const r=kk/0.344;c.beginPath();c.arc(dx,dy,r,-0.35,0.35);c.stroke();c.beginPath();c.arc(dx,dy,r,PI-0.35,PI+0.35);c.stroke();txt(c,'002 arcs: stacked layers',dx,dy+dw/2-8,{align:'center',size:10.5,color:'#ffe6b0'});}
+    else txt(c,'no 002 ring: unlayered graphene',dx,dy+dw/2-8,{align:'center',size:10.5,color:'#ffe6b0'});
+    txt(c,`diffraction, aperture on ${TEMP.ap==='rim'||g.d<=0?'rim':'core'}`,dx-dw/2,24,{size:13,w:600,color:'#7fc8d6'});
+    txt(c,'10',dx+kk/0.213*0.72,dy-kk/0.213*0.72,{size:10,color:'#a8c0ff'});txt(c,'11',dx+kk/0.123*0.72,dy-kk/0.123*0.72,{size:10,color:'#a8c0ff'});}
+  txt(c,`slice ${g.D.toFixed(3)} µm, core ${g.d>0?g.d.toFixed(3):'—'} µm, rim looks ${(g.rim+1e-9).toFixed(3)} µm (true ${TEMP.rim.toFixed(3)})`,tx,ty+ts+22,{size:12.5,color:'#ffd27a'});
+}
+
+const DRAW=[drawBirth,drawRim,drawISM,drawNeb,drawSleep,drawBreak,drawFall,drawChem,drawTEM];
+function frame(){const t=(performance.now()-t0)/1000;if(W>0){S.save();DRAW[cur](S,W,H,t);S.restore();}requestAnimationFrame(frame);}
+buildChips();fit();go(0);requestAnimationFrame(frame);
+window.__viv={runRim,P2,get RIM(){return RIM},go};
+</script>
+</body></html>
