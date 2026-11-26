@@ -1,6 +1,4 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Mars Baseball at Jezero</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&display=swap">
@@ -46,7 +44,6 @@
   @media (prefers-reduced-motion: reduce) { #intro { transition: none; } }
 </style>
 
-</head><body>
 <div id="intro" role="dialog" aria-labelledby="ttl"><div class="card">
   <h1 id="ttl">Mars Baseball at Jezero</h1>
   <p class="where">Jezero Dome · Perseverance landing site, 18.44°N 77.45°E · Jezero crater, Mars</p>
@@ -72,7 +69,9 @@
   with regolith would take a layer 10 m deep, so the roof is a cable net anchored into the ground. The thinner air means drag is only
   about a quarter as strong, relative to the ball's weight, as on Earth, so long drives carry farther.</p>
   <p><kbd>C</kbd> compare the last hit on Earth, Mars and the Moon · <kbd>N</kbd> day or night game · <kbd>W</kbd> wall-ball demo ·
-  <kbd>T</kbd> speed up the sky · <kbd>1</kbd>–<kbd>5</kbd> change seat · drag to look, scroll to zoom · <kbd>[</kbd> <kbd>]</kbd> game speed · <kbd>space</kbd> pause</p>
+  <kbd>T</kbd> speed up the sky · <kbd>1</kbd>–<kbd>5</kbd> change seat · drag to look, scroll to zoom · <kbd>[</kbd> <kbd>]</kbd> game speed · <kbd>space</kbd> pause.
+  With a VR headset, <b>Enter VR</b> seats you in the stands: X/Y change seat, A compares worlds, B switches day and night,
+  the right trigger calls a wall-ball, the left trigger speeds up the sky, and a panel at your knees keeps the score.</p>
   <p class="dim">Written from scratch, as a companion to the Moon game built on Scott Fraundorf's program
   (<a href="https://loves-to-oop.github.io/scale_world/moon_baseball.html" target="_blank" rel="noopener">loves-to-oop.github.io/scale_world/moon_baseball.html</a>).
   Physics after P. Fraundorf, “Moon-Baseball in ‘Bullet-Time’”, HAL <a href="https://hal.science/hal-05375520" target="_blank" rel="noopener">hal-05375520</a>.
@@ -86,6 +85,7 @@
   <button class="btn" id="bCompare" type="button">Compare worlds (C)</button>
   <button class="btn" id="bNight" type="button" aria-pressed="true">Night game (N)</button>
   <button class="btn" id="bWall" type="button">Wall-ball (W)</button>
+  <button class="btn" id="bVR" type="button" hidden>Enter VR</button>
 </div>
 
 <script type="module">
@@ -143,6 +143,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWid
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 90000);
+const rig = new THREE.Group(); rig.add(camera); scene.add(rig);   // stays at the origin on screen; in VR it carries the headset to your seat
+if (!IS_REC) renderer.xr.enabled = true;
 addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 const M = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
 const canvasTex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
@@ -460,10 +462,14 @@ const legend = document.getElementById("legend");
 
 // ---------- seats and controls ----------
 const SEATS = [["behind home plate", Math.PI, 0.4], ["first-base upper deck", 2.2, 0.85], ["centre-field bleachers", 0.22, 0.7], ["third-base front row", -1.95, 0.08], ["outside, on the crater floor", null, 0]];
-let seatI = 0, yaw = 0, pitch = 0, fov = 62, speedK = 1, paused = false, started = false, dragging = false;
+let seatI = 0, yaw = 0, pitch = 0, fov = 62, speedK = 1, paused = false, started = false, dragging = false, vrTurn = 0, vrDirty = true;
+const EYE = V3(0, 0, 0), _cp = V3(0, 0, 0); let eyeUp = 1.25;   // seat eye point, and its height above the floor (seated, or standing outside)
 function sit(i) { seatI = (i + SEATS.length) % SEATS.length; const [, phi, f] = SEATS[seatI];
-  if (phi === null) { const [x, z] = enToW(-340, -260); camera.position.set(x, groundH(x, z) + 1.7, z); yaw = Math.atan2(-(0 - x), -(-55 - z)); pitch = 0.08; return; }
-  const r = frontD(phi) + f * STAND_D; camera.position.set(r * Math.sin(phi), standH(r, phi) + 1.25, -r * Math.cos(phi)); const to = V3(0, 0, -42).sub(camera.position); yaw = Math.atan2(-to.x, -to.z); pitch = -0.1; }
+  if (phi === null) { const [x, z] = enToW(-340, -260); EYE.set(x, groundH(x, z) + 1.7, z); eyeUp = 1.7; yaw = Math.atan2(-(0 - x), -(-55 - z)); pitch = 0.08; }
+  else { const r = frontD(phi) + f * STAND_D; EYE.set(r * Math.sin(phi), standH(r, phi) + 1.25, -r * Math.cos(phi)); eyeUp = 1.25; const to = V3(0, 0, -42).sub(EYE); yaw = Math.atan2(-to.x, -to.z); pitch = -0.1; }
+  vrTurn = 0; vrDirty = true;
+  if (renderer.xr.isPresenting) { rig.position.copy(EYE); rig.position.y -= eyeUp; rig.rotation.set(0, yaw, 0); }   // the headset's floor goes on the seat's floor
+  else { rig.position.set(0, 0, 0); rig.rotation.set(0, 0, 0); camera.position.copy(EYE); } }
 const intro = document.getElementById("intro"), hud = document.getElementById("hud");
 function start() { if (started) return; started = true; intro.classList.add("gone"); }
 document.getElementById("start").onclick = start;
@@ -481,6 +487,45 @@ renderer.domElement.addEventListener("pointerdown", e => { dragging = true; rend
 addEventListener("pointerup", () => dragging = false);
 addEventListener("pointermove", e => { if (!dragging) return; yaw -= e.movementX * 0.004 * fov / 62; pitch = clamp(pitch - e.movementY * 0.004 * fov / 62, -1.5, 1.5); });
 renderer.domElement.addEventListener("wheel", e => { fov = clamp(fov * Math.exp(e.deltaY * 0.001), 12, 80); e.preventDefault(); }, { passive: false });
+
+// ---------- VR: a headset puts you in the same seats, with a panel at your knees and the controllers for the keys ----------
+const vrC = document.createElement("canvas"); vrC.width = 1024; vrC.height = 384; const vrT = new THREE.CanvasTexture(vrC); vrT.colorSpace = THREE.SRGBColorSpace;
+const vrPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.24), new THREE.MeshBasicMaterial({ map: vrT, transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
+vrPanel.renderOrder = 20; vrPanel.visible = false; vrPanel.frustumCulled = false; scene.add(vrPanel);
+const prevB = {}; let snap = true;
+const tap = (k, gp, i) => { const p = !!gp.buttons[i]?.pressed, was = prevB[k + i]; prevB[k + i] = p; return p && !was; };
+const bVR = document.getElementById("bVR");
+if (!IS_REC && navigator.xr) navigator.xr.isSessionSupported("immersive-vr").then(ok => { if (!ok) return; bVR.hidden = false;
+  bVR.onclick = async () => { start(); let s;
+    try { s = await navigator.xr.requestSession("immersive-vr", { optionalFeatures: ["local-floor"] }); }
+    catch (e) { say("This page isn't allowed to open VR here (an embedded page can be refused). Open mars_baseball.html directly in the headset's browser."); sbTimer = 0; return; }
+    renderer.xr.setReferenceSpaceType("local-floor"); renderer.xr.setFoveation(1.0); renderer.xr.setFramebufferScaleFactor(0.85);
+    await renderer.xr.setSession(s); camera.position.set(0, 0, 0); vrPanel.visible = true; sit(seatI);
+    s.addEventListener("end", () => { vrPanel.visible = false; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); sit(seatI); }); }; }).catch(() => {});
+function vrInput() {
+  for (const src of renderer.xr.getSession()?.inputSources || []) { const gp = src.gamepad; if (!gp) continue;
+    if (src.handedness === "left") { if (tap("L", gp, 4)) sit(seatI - 1); if (tap("L", gp, 5)) sit(seatI + 1);
+      if (tap("L", gp, 0)) { skyFast = skyFast === 1 ? 240 : 1; vrDirty = true; } if (tap("L", gp, 1)) { speedK = speedK >= 4 ? 0.5 : speedK * 2; vrDirty = true; } }
+    else { if (tap("R", gp, 4)) { if (lastHit) startCompare(); else say("Nothing to compare yet: wait for a ball in play."); vrDirty = true; }
+      if (tap("R", gp, 5)) { toggleNight(); vrDirty = true; } if (tap("R", gp, 0)) { wallBall(); vrDirty = true; }
+      const ax = gp.axes.length >= 4 ? gp.axes[2] : gp.axes[0] || 0;   // thumbstick: snap turn 30°
+      if (Math.abs(ax) > 0.7 && snap) { vrTurn -= Math.sign(ax) * Math.PI / 6; snap = false; } else if (Math.abs(ax) < 0.3) snap = true; } }
+  rig.rotation.y = yaw + vrTurn;
+  const cp = camera.getWorldPosition(_cp), dir = V3(0, 0, -1).applyQuaternion(rig.quaternion); dir.y = 0; dir.normalize();
+  vrPanel.position.copy(cp).addScaledVector(dir, 0.75).add(V3(0, -0.45, 0)); vrPanel.lookAt(cp); }
+function drawVR() { const g = vrC.getContext("2d"), W = 1024, H = 384; vrDirty = false; g.clearRect(0, 0, W, H);
+  g.fillStyle = "rgba(20,13,9,.84)"; g.beginPath(); g.roundRect(0, 0, W, H, 22); g.fill();
+  const wrap = (txt, y, lh, max) => { let line = "", n = 0; for (const w of txt.split(" ")) { if (g.measureText(line + w).width > W - 48) { if (++n >= max) { g.fillText(line.trim() + " …", 24, y); return y + lh; } g.fillText(line, 24, y); y += lh; line = ""; } line += w + " "; } if (line.trim()) g.fillText(line, 24, y); return y + lh; };
+  g.fillStyle = "#ffcf6e"; g.font = "700 34px Helvetica, Arial";
+  g.fillText(`${TEAMS[0].short} ${GS.score[0]} · ${TEAMS[1].short} ${GS.score[1]}   ${GS.over ? "FINAL" : (GS.half ? "▼" : "▲") + GS.inning + "  " + GS.outs + " out  " + GS.balls + "-" + GS.strikes}   Mars ${clock()}${skyFast > 1 ? " (sky ×240)" : ""}`, 24, 50);
+  let y = 96;
+  if (compare) { g.fillStyle = "#f6e9dc"; g.font = "700 28px Helvetica, Arial"; g.fillText(`Same swing, same energy · t = ${f1(compare.t)} s`, 24, y); y += 40; g.font = "27px Helvetica, Arial";
+    for (const w of compare.worlds) { g.fillStyle = "#" + w.col.toString(16).padStart(6, "0"); g.beginPath(); g.arc(34, y - 9, 9, 0, 7); g.fill();
+      g.fillStyle = "#f6e9dc"; g.fillText(`${w.name}: ${w.over ? "over the wall" : f1(w.dist, 0) + " m"}, ${f1(w.hang)} s aloft, apex ${f1(w.apex, 0)} m`, 54, y); y += 38; } }
+  else { g.fillStyle = "#f6e9dc"; g.font = "28px Helvetica, Arial"; y = wrap(lastPlay, y, 32, 3) + 6; g.fillStyle = "#ffcf6e"; g.font = "23px Helvetica, Arial"; wrap(lastStats, y, 28, 3); }
+  g.fillStyle = "#c7ab93"; g.font = "22px Helvetica, Arial";
+  g.fillText(`${SEATS[seatI][0]} · X / Y seat · right stick turns · left grip game speed ×${speedK}`, 24, 330);
+  g.fillText("A compare worlds · B day / night · right trigger wall-ball · left trigger speeds up the sky", 24, 362); vrT.needsUpdate = true; }
 
 function drawScoreboard() {
   const g = sbC.getContext("2d"); g.fillStyle = "#0d0a08"; g.fillRect(0, 0, 2048, 1024);
@@ -522,7 +567,8 @@ const clockR = new THREE.Clock();
 GS.order = [0, 0]; setupHalf(); sit(0); say(`Welcome to Jezero Dome! The ${TEAMS[0].name}, ${TEAMS[0].from}, visit the ${TEAMS[1].name}, ${TEAMS[1].from}.`);
 function frame(rdtIn) {
   const rdt = rdtIn ?? Math.min(clockR.getDelta(), 0.1), dt = paused || !started ? 0 : rdt * speedK; wallT += rdt; gameT += dt;
-  if (!IS_REC) { camera.fov = fov; camera.updateProjectionMatrix(); camera.rotation.set(pitch, yaw, 0, "YXZ"); }
+  const vr = renderer.xr.isPresenting;
+  if (vr) vrInput(); else if (!IS_REC) { camera.fov = fov; camera.updateProjectionMatrix(); camera.rotation.set(pitch, yaw, 0, "YXZ"); }
   skyT += dt * skyFast; skySec = ((skyT % SOL) + SOL) % SOL;
   if (compare) {   // the comparison runs on its own clock while the game waits
     compare.t += dt; ball.visible = false; trail.line.visible = false;
@@ -548,7 +594,8 @@ function frame(rdtIn) {
   cheer = Math.max(0, cheer - rdt * 0.6); const O = new THREE.Object3D();
   for (let i = 0; i < NF; i++) { const f = FANS[i], up = cheer > 0 && f.home === cheerHome ? Math.max(0, Math.sin(wallT * 7 + f.ph)) * 0.3 * Math.min(1, cheer) : 0; O.position.set(f.x, f.h + up, f.z); O.rotation.set(0, f.ry, 0); O.updateMatrix(); fans.setMatrixAt(i, O.matrix); }
   fans.instanceMatrix.needsUpdate = true;
-  updateSky(camera.position);
+  updateSky(camera.getWorldPosition(_cp));
+  if (vr && (vrDirty || sbTimer - rdt <= 0)) drawVR();
   sbTimer -= rdt; if (sbTimer <= 0) { sbTimer = 0.5; drawScoreboard();
     hud.innerHTML = `<b>${TEAMS[0].short} ${GS.score[0]} · ${TEAMS[1].short} ${GS.score[1]}</b> · ${GS.over ? "final" : (GS.half ? "bottom " : "top ") + ordinal(GS.inning) + " · " + GS.outs + " out · " + GS.balls + "-" + GS.strikes} · Mars time ${clock()}${skyFast > 1 ? " (sky ×240)" : ""}<br>${lastPlay}<br><span class="stats">${lastStats}</span><br><span class="keys">${SEATS[seatI][0]} · C compare · N day/night · W wall-ball · T sky · 1-5 seats · drag, scroll · [ ] speed ×${speedK} · space pause</span>`; }
   renderer.render(scene, camera); }
@@ -594,7 +641,7 @@ function flight(dt) {
 
 // recording hooks for the narrated walkthrough (inert unless window.__REC is set before the page loads)
 window.__S = { start, renderer, camera, scene, sit, toggleNight, startCompare, wallBall, get skySec() { return skySec; }, set skySec(v) { setSky(v); }, SOL,
-  step(dt) { frame(dt); },
+  step(dt) { frame(dt); }, vrCanvas() { drawVR(); return vrC.toDataURL(); },
   skyInfo() { const S = sunAt(skySec), ph = fromOrbit(PHOBOS.a, phobosTh(skyT)), de = fromOrbit(DEIMOS.a, deimosTh(skyT)), aa = d => { const [e, n] = wToEN(d.x, d.z); return { alt: +(Math.asin(d.y) / deg).toFixed(1), az: +((Math.atan2(e, n) / deg + 360) % 360).toFixed(1), dir: [d.x, d.y, d.z] }; };
     const eH = S.H - 38 * deg, eDir = enuToDir(-Math.sin(eH), -Math.sin(LAT) * Math.cos(eH), Math.cos(LAT) * Math.cos(eH));
     return { time: clock(), sun: aa(S.dir), earth: aa(eDir), phobos: { ...aa(ph.dir), km: Math.round(ph.dist / 1000), deg: +(22e3 / ph.dist / deg).toFixed(3), lit: phobosM.material.uniforms.lit.value }, deimos: aa(de.dir) }; },
