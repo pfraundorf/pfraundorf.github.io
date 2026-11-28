@@ -53108,7 +53108,7 @@ const OSM_NAMES = [["Brockmeier School","school",-4743,3590],["Saint Paul Church
 // Bessemer steel, sections for women, juveniles, "hardened" and ordinary prisoners, four bathrooms, a conversation cage and a remote
 // locking lever. No plans survive: the rooms are laid out as such jails were, and the info points (E) say what is known and what is not.
 const IS_HEADSET = /OculusBrowser|Quest|Pico|Wolvic/i.test(navigator.userAgent);
-const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: !IS_HEADSET });
+const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true, logarithmicDepthBuffer: !IS_HEADSET });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0; renderer.xr.enabled = true;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -53710,6 +53710,8 @@ CUTS.push((x, z, h) => { const dx = x - JO[0], dz = z - JO[1], X = dx * JUX + dz
   const lat = 1 - sstep(Math.max(-22 - X, X - 38, 0), 0, 12), d = PH.D * sstep(Z, 54, 63) * (1 - sstep(Z, 95, 122)) * lat; h -= d;
   if (X > PH.X0 + 0.05 && X < PH.X1 - 0.05 && Z > PH.Z0 + 1.2 && Z < PH.Z1 - 0.05) h = Math.min(h, JY + PH.LF - 0.15); return h; });
 { const [cx, cz] = JW(9, 13); pad(cx, cz, 19, 23, JRY, JY, 8); }
+// 1964 (the family's plan): behind the 1904 addition, steps up from a basement door; the ground is levelled a little round them
+const BKY = ground(...JW(6.5, 33.6)) - JY; { const [bx, bz] = JW(6.5, 33.6); pad(bx, bz, 2.6, 2.6, JRY, JY + BKY, 4); }
 JAIL_HOLE.push((x, z) => { const dx = x - JO[0], dz = z - JO[1], X = dx * JUX + dz * JUZ, Z = -dx * JUZ + dz * JUX; return X > -4.2 && X < 27.5 && Z > -4 && Z < 33.5; });
 const B0 = -2.1, F3 = 8.5, F1 = 0.6, F2 = 4.6, J1 = 0.6, J2 = 5.2, JTOP = 10.4, T = 0.45, TI = 0.15;
 // 1964: the house and the jail were painted white (the family's recollection), so the outside brick is a painted brick
@@ -53747,6 +53749,21 @@ function stairs(F, x, w, z0, z1, y0, y1, mat, col, side = 0x5a4030, iron = false
   const lo = Math.min(z0, z1), hi = Math.max(z0, z1); floorRect(F, x - w / 2, lo, x + w / 2, hi, z1 > z0 ? y0 : y1, { y2: z1 > z0 ? y1 : y0, along: "z" }); }
 function light(F, x, y, z, I = 1.2, d = 10) { const L = new THREE.PointLight(0xfff0d0, I, d, 1.6); L.position.copy(toWorld(F, x, y, z)); scene.add(L); cyl(F, MAT.glow, x, y + 0.05, z, 0.06, 0.06, 0.12, 0xfff4d8, 8); return L; }
 const JLIGHTS = [];
+// a hole in the ground surface: a flat rectangle drawn before the ground that marks the stencil, so the ground is not drawn where it shows
+// (the ground mesh is too coarse to cut a stairwell into)
+function skyHole(F, x0, z0, x1, z1, y) {
+  if (!skyHole.mat) { skyHole.mat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, side: THREE.DoubleSide, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp });
+    Object.assign(groundMat, { stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp }); groundMat.needsUpdate = true; }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2), skyHole.mat); m.matrixAutoUpdate = false; m.matrix.copy(F.m).multiply(new THREE.Matrix4().makeTranslation((x0 + x1) / 2, y, (z0 + z1) / 2));
+  m.renderOrder = -10; m.frustumCulled = false; scene.add(m); }
+// an areaway: in frame D (origin at the outside face of the wall, +Z pointing out), a landing at the basement floor in front of the door
+// and steps up to the ground at gy, between stone walls with a pipe rail
+function areaway(D, gy) { const n = Math.max(1, Math.round((gy - B0) / 0.19)), z1 = 0.8 + n * 0.25, S = 0xc8c0b0, R = 0x2a2c2a;
+  box(D, MAT.conc, 0, B0 - 0.075, 0.4, 0.9, 0.15, 0.8, 0x9a9488); floorRect(D, -0.45, 0, 0.45, 0.8, B0);
+  stairs(D, 0, 0.9, 0.8, z1, B0, gy, MAT.stone, 0xc0b8a8, 0x9a9488);
+  for (const s of [-1, 1]) { box(D, MAT.stone, s * 0.6, (B0 - 0.2 + gy + 0.15) / 2, z1 / 2, 0.3, gy + 0.35 - B0, z1, S); wallSeg(D, s * 0.45, 0, s * 0.45, z1, B0 - 0.5, gy + 1.0); wallSeg(D, s * 0.75, 0, s * 0.75, z1, B0 - 0.5, gy + 1.0);
+    for (const z of [0.12, z1 / 2, z1 - 0.12]) cyl(D, MAT.iron, s * 0.6, gy + 0.6, z, 0.022, 0.022, 0.9, R, 6); cyl(D, MAT.iron, s * 0.6, gy + 1.04, z1 / 2, 0.025, 0.025, z1 - 0.1, R, 6, Math.PI / 2, 0); }
+  skyHole(D, -0.45, 0, 0.45, z1, gy + 0.005); }
 
 // an iron picket fence along X or along Z, from (ax, az) to (bx, bz): posts, two rails, pickets with spear points, on a low stone curb;
 // gaps (from, to, along the line) are left open
@@ -53772,6 +53789,9 @@ function buildJail() { const F = JF;
   // 1964 (the family's recollection): a door from the prisoners' side straight into the jail. The only door out of the west side is the
   // one at its north corner, so none into the booking area
   op("z", HZ - T / 2, 9.0, 0.95, F1, 2.2, { door: true });
+  // the basement (the family's plan): a door out of the kitchen store room near the back of the west wall, by steps up to the yard; and
+  // the opening through the back foundation into the jail's basement
+  op("x", HX - T / 2, 8.3, 0.9, B0, 1.95, { door: true }); op("z", HZ - T / 2, 6.5, 1.0, B0, 1.95, { door: true });
   bwall(F, 0, T / 2, HX, T / 2, -0.4, 8.8, 1, MAT.plaster, PLASTER); bwall(F, T / 2, T, T / 2, HZ - T, -0.4, 8.8, 1, MAT.plaster, PLASTER); bwall(F, HX - T / 2, T, HX - T / 2, HZ - T, -0.4, 8.8, -1, MAT.plaster, PLASTER);
   bwall(F, 0, HZ - T / 2, 2.0, HZ - T / 2, -0.4, 8.8, -1, MAT.plaster, PLASTER); bwall(F, 13.4, HZ - T / 2, HX, HZ - T / 2, -0.4, 8.8, -1, MAT.plaster, PLASTER);
   wallLine(F, 2.0, HZ - T / 2, 13.4, HZ - T / 2, -0.4, JTOP, T, MAT.wbrick, WASH, MAT.plaster, PLASTER, true, false);
@@ -53838,19 +53858,53 @@ function buildJail() { const F = JF;
     wallLine(F, T, 4.9, 5.6, 4.9, F3, ceil, TI, MAT.plaster, KC, MAT.plaster, KC); wallLine(F, 8.1, 4.9, HX - T, 4.9, F3, ceil, TI, MAT.plaster, KC, MAT.plaster, KC);
     for (const [x, z] of [[1.6, 1.5], [2.6, 1.3], [11.8, 7.9]]) { box(F, MAT.plain, x, F3 + 0.28, z, 0.9, 0.55, 0.5, 0x5a4a32); box(F, MAT.plain, x, F3 + 0.56, z, 0.92, 0.03, 0.52, 0x3a2e22); }
     JLIGHTS.push(light(F, 6.85, ceil - 0.15, 4.9, 1.0, 11)); }
-  // ---- the basement (1964, the family's recollection): under the house and under the jail of 1869, two-foot stone walls under the house,
-  // a rough floor; the stair down under the main stair; tools kept in the south-east corner. The jail's basement is entered from the house's ----
-  { const S = 0xb4aa94, yb = B0 - 0.1, yt = F1 - 0.25, H = yt - yb, yc = (yb + yt) / 2, wsg = (ax, az, bx, bz) => wallSeg(F, ax, az, bx, bz, yb, yt);
-    box(F, MAT.stone, HX / 2, yc, 0.31, HX - 0.04, H, 0.58, S); wsg(0.6, 0.6, HX - 0.6, 0.6);
-    box(F, MAT.stone, 0.31, yc, HZ / 2, 0.58, H, HZ - 0.04, S); wsg(0.6, 0.6, 0.6, HZ - 0.6); box(F, MAT.stone, HX - 0.31, yc, HZ / 2, 0.58, H, HZ - 0.04, S); wsg(HX - 0.6, 0.6, HX - 0.6, HZ - 0.6);
-    box(F, MAT.stone, 3.01, yc, HZ - 0.31, 5.98, H, 0.58, S); box(F, MAT.stone, 10.35, yc, HZ - 0.31, 6.66, H, 0.58, S); box(F, MAT.stone, 6.5, B0 + 2.05 + (yt - B0 - 2.05) / 2, HZ - 0.31, 1.0, yt - B0 - 2.05, 0.58, S);
-    wsg(0.6, HZ - 0.6, 6.0, HZ - 0.6); wsg(7.0, HZ - 0.6, HX - 0.6, HZ - 0.6); wsg(6.0, HZ - 0.6, 6.0, HZ); wsg(7.0, HZ - 0.6, 7.0, HZ);
+  // ---- the basement (1964, the family's marked-up plan): two-foot stone walls throughout, a rough floor. Under the house: the hall between
+  // stone walls, with the stair down under the main stair and a doorway near the front on each side; the kitchen store room on the west
+  // (high X), with a door out near the back by steps up to the yard; the tool storage on the east. Through the back foundation into the
+  // jail of 1869's basement: three rooms one behind another, joined by openings, with no lights and no doors. Then under the 1904 addition
+  // a solitary confinement cell, the washing machines behind it, and at the back a door out by steps up to the jail yard ----
+  { const S = 0xb4aa94, yb = B0 - 0.1, yt = F1 - 0.25, DH = 1.95;
+    // a stone wall along X (line "z", at z, from a0 to a1) or along Z (line "x"), th thick, from the floor to y1, with doorways [c, w]
+    const swall = (line, at, a0, a1, y1, gaps = [], th = 0.6, col = S) => { const P = []; let a = a0;
+      for (const [c, w] of gaps.slice().sort((p, q) => p[0] - q[0])) { P.push([a, c - w / 2, yb]); P.push([c - w / 2, c + w / 2, B0 + DH]); a = c + w / 2; } P.push([a, a1, yb]);
+      for (const [p0, p1, y0] of P) { if (p1 - p0 < 0.01) continue; const m = (p0 + p1) / 2, L = p1 - p0, h = th / 2;
+        if (line === "z") { box(F, MAT.stone, m, (y0 + y1) / 2, at, L, y1 - y0, th, col); for (const s of [-1, 1]) wallSeg(F, p0, at + s * h, p1, at + s * h, y0, y1); for (const p of [p0, p1]) wallSeg(F, p, at - h, p, at + h, y0, y1); }
+        else { box(F, MAT.stone, at, (y0 + y1) / 2, m, th, y1 - y0, L, col); for (const s of [-1, 1]) wallSeg(F, at + s * h, p0, at + s * h, p1, y0, y1); for (const p of [p0, p1]) wallSeg(F, at - h, p, at + h, p, y0, y1); } } };
+    // under the house
+    swall("z", 0.3, 0, HX, yt); swall("x", 0.3, 0.6, HZ - 0.6, yt); swall("x", HX - 0.3, 0.6, HZ - 0.6, yt, [[8.3, 0.9]]); swall("z", HZ - 0.3, 0, HX, yt, [[6.5, 1.0]]);
+    swall("x", 5.3, 0.6, HZ - 0.6, yt, [[2.75, 0.9]]); swall("x", 8.35, 0.6, HZ - 0.6, yt, [[1.35, 0.9]]);
     slab(F, MAT.conc, 0x8a7e6a, 0.6, 0.6, HX - 0.6, HZ - 0.6, B0, 0.15); floorRect(F, 0.6, 0.6, HX - 0.6, HZ - 0.6, B0); floorRect(F, 6.0, HZ - 0.6, 7.0, HZ, B0);
-    // under the jail of 1869
-    const X0 = 2.0, X1 = 13.4, JZ = 20.1, jt = J1 - 0.3, JH = jt - yb, jc = (yb + jt) / 2;
-    box(F, MAT.stone, X0 + 0.31, jc, (HZ + JZ) / 2, 0.58, JH, JZ - HZ, S); box(F, MAT.stone, X1 - 0.31, jc, (HZ + JZ) / 2, 0.58, JH, JZ - HZ, S); box(F, MAT.stone, (X0 + X1) / 2, jc, JZ + 0.29, X1 - X0, JH, 0.58, S);
-    wsg(X0 + 0.6, HZ, X0 + 0.6, JZ); wsg(X1 - 0.6, HZ, X1 - 0.6, JZ); wsg(X0 + 0.6, JZ, X1 - 0.6, JZ);
-    slab(F, MAT.conc, 0x847a68, X0 + 0.6, HZ, X1 - 0.6, JZ, B0, 0.15); floorRect(F, X0 + 0.6, HZ, X1 - 0.6, JZ, B0);
+    slab(F, MAT.conc, 0x8a7e6a, HX - 0.6, 7.85, HX, 8.75, B0, 0.15); floorRect(F, HX - 0.6, 7.85, HX, 8.75, B0);
+    doorLeaf(F, { line: "x", at: HX - 0.3, c: 8.3, w: 0.9, h: DH }, B0, 0.6, 0x6a5038, -1, true);
+    { const w = toWorld(F, HX, 0, 8.3); areaway(frame(w.x, w.z, F.y, F.ry + Math.PI / 2), 0); }
+    // under the jail of 1869: three dark rooms, the openings between them on the way through toward the back
+    const X0 = 2.0, X1 = 13.4, jt = J1 - 0.3, R0 = -0.55, R1 = 12.7, RZ = 31.75, jt2 = 0.0;
+    swall("x", X0 + 0.3, HZ, 20.4, jt); swall("x", X1 - 0.3, HZ, 20.4, jt);
+    swall("z", 13.45, X0 + 0.6, X1 - 0.6, jt, [[6.95, 1.8]]); swall("z", 16.95, X0 + 0.6, X1 - 0.6, jt, [[6.8, 1.5]]); swall("z", 20.775, R0, X1, jt, [[6.5, 1.1]], 0.75);
+    // under the porch's inner walls, the foundation steps in
+    box(F, MAT.stone, 12.45, (yb + jt) / 2, 10.3, 0.7, jt - yb, 1.8, S); solidBox(F, 12.1, HZ, 12.8, 11.2, yb, jt);
+    // a stone mass jutting from the back wall, as the family's plan draws it (what it was is not known)
+    box(F, MAT.stone, 8.22, (yb + jt) / 2, 20.0, 1.32, jt - yb, 0.8, S); solidBox(F, 7.56, 19.6, 8.88, 20.4, yb, jt);
+    slab(F, MAT.conc, 0x847a68, X0 + 0.6, HZ, X1 - 0.6, 20.4, B0, 0.15); floorRect(F, X0 + 0.6, HZ, X1 - 0.6, 20.4, B0); floorRect(F, 5.95, 20.4, 7.05, 21.15, B0);
+    // under the addition of 1904-05: the solitary cell (east, toward the front), the washing machines behind it, the open west side, the back door
+    swall("x", R0 + 0.3, 21.0, RZ, jt2); swall("x", R1 - 0.3, 21.0, RZ, jt2); swall("z", RZ - 0.3, R0 + 0.6, R1 - 0.6, jt2, [[6.5, 0.9]]);
+    swall("x", 5.55, 21.0, RZ - 0.6, jt2, [[21.75, 0.8], [29.0, 0.9]]); swall("z", 26.7, R0 + 0.6, 5.25, jt2, [], 0.45);
+    slab(F, MAT.conc, 0x847a68, R0 + 0.6, 21.0, R1 - 0.6, RZ - 0.6, B0, 0.15); floorRect(F, R0 + 0.6, 21.0, R1 - 0.6, RZ - 0.6, B0);
+    slab(F, MAT.conc, 0x847a68, 6.05, RZ - 0.6, 6.95, RZ, B0, 0.15); floorRect(F, 6.05, RZ - 0.6, 6.95, RZ, B0);
+    doorLeaf(F, { line: "z", at: RZ - 0.3, c: 6.5, w: 0.9, h: DH }, B0, 0.6, 0x6a5038, -1, true); doorLeaf(F, { line: "x", at: 5.55, c: 29.0, w: 0.9, h: DH }, B0, 0.6, 0x7a6048, -1, false);
+    { const w = toWorld(F, 6.5, 0, RZ); areaway(frame(w.x, w.z, F.y, F.ry), BKY); }
+    // the cell: a heavy iron door standing open, a plank bunk on chains, a bucket; no window and no light
+    doorLeaf(F, { line: "x", at: 5.55, c: 21.75, w: 0.8, h: 1.9 }, B0, 0.6, 0x3a3e3c, -1, true); box(F, MAT.iron, 4.87, B0 + 1.05, 21.42, 0.25, 0.08, 0.06, 0x2a2c2a);
+    box(F, MAT.plank, 0.43, B0 + 0.45, 23.6, 0.72, 0.06, 1.9, 0x7a5a3a); for (const z of [22.8, 24.4]) cyl(F, MAT.iron, 0.45, B0 + 0.75, z, 0.012, 0.012, 0.62, 0x3a3a3a, 4, 0, 0.75);
+    solidBox(F, 0.05, 22.65, 0.8, 24.55, yb, B0 + 0.5); cyl(F, MAT.iron, 4.6, B0 + 0.15, 25.9, 0.15, 0.13, 0.3, 0x5a5e5c, 12);
+    // the washing machines (top-loading, along the east wall), a dryer, a double laundry tub, a folding table and baskets: typical, placed by guess
+    for (const z of [27.6, 28.45, 29.3]) { box(F, MAT.plain, 0.45, B0 + 0.45, z, 0.68, 0.9, 0.7, 0xf0f0ea); box(F, MAT.plain, 0.14, B0 + 0.99, z, 0.06, 0.18, 0.7, 0xe0e0d8); box(F, MAT.plain, 0.5, B0 + 0.905, z, 0.5, 0.012, 0.5, 0xc8c8c0);
+      for (const dz of [-0.2, 0, 0.2]) cyl(F, MAT.plain, 0.18, B0 + 1.0, z + dz, 0.025, 0.025, 0.03, 0x3a3a3a, 8, 0, Math.PI / 2); }
+    box(F, MAT.plain, 0.45, B0 + 0.45, 30.4, 0.68, 0.9, 0.7, 0xeceae2); cyl(F, MAT.glass, 0.8, B0 + 0.5, 30.4, 0.2, 0.2, 0.02, 0x8a9a9a, 18, 0, Math.PI / 2); solidBox(F, 0.05, 27.2, 0.8, 30.8, yb, B0 + 0.95);
+    box(F, MAT.conc, 2.6, B0 + 0.78, 30.8, 1.3, 0.36, 0.62, 0xc0bcb2); box(F, MAT.plain, 2.6, B0 + 0.97, 30.8, 1.2, 0.02, 0.5, 0x6a6a64); for (const x of [2.05, 3.15]) box(F, MAT.iron, x, B0 + 0.3, 30.8, 0.05, 0.6, 0.5, 0x4a4a48);
+    for (const x of [2.35, 2.85]) cyl(F, MAT.steel, x, B0 + 1.12, 31.07, 0.015, 0.015, 0.2, 0xb8bcc0, 6); solidBox(F, 1.95, 30.49, 3.25, 31.15, yb, B0 + 0.96);
+    box(F, MAT.plank, 3.7, B0 + 0.86, 28.3, 0.8, 0.05, 1.6, 0xa88a60); for (const [dx, dz] of [[-0.35, -0.75], [0.35, -0.75], [-0.35, 0.75], [0.35, 0.75]]) box(F, MAT.plain, 3.7 + dx, B0 + 0.42, 28.3 + dz, 0.05, 0.84, 0.05, 0x6a5038);
+    solidBox(F, 3.3, 27.5, 4.1, 29.1, yb, B0 + 0.88); for (const [x, z] of [[3.6, 29.8], [4.3, 27.5]]) cyl(F, MAT.plain, x, B0 + 0.16, z, 0.26, 0.22, 0.32, 0xb89860, 12);
     // the tools in the south-east corner (south: low X; east: back, high Z)
     const bz = HZ - 0.95; box(F, MAT.plank, 2.0, B0 + 0.88, bz, 2.6, 0.06, 0.7, 0x9a7a52); for (const x of [0.8, 3.2]) for (const dz of [-0.28, 0.28]) box(F, MAT.plain, x, B0 + 0.43, bz + dz, 0.08, 0.86, 0.08, 0x6a5038); box(F, MAT.plank, 2.0, B0 + 0.25, bz, 2.5, 0.03, 0.6, 0x8a6a48);
     box(F, MAT.plain, 2.0, B0 + 1.6, HZ - 0.62, 2.4, 1.0, 0.02, 0xa89068); solidBox(F, 0.7, bz - 0.35, 3.3, bz + 0.35, B0 - 0.1, B0 + 0.95);
@@ -53859,7 +53913,23 @@ function buildJail() { const F = JF;
     for (let k = 0; k < 3; k++) box(F, MAT.plank, 0.95, B0 + 0.5 + k * 0.55, 6.3, 0.6, 0.03, 2.4, 0x9a7a52); for (const z of [5.15, 7.45]) box(F, MAT.plain, 0.95, B0 + 0.85, z, 0.04, 1.7, 0.6, 0x6a5038);
     for (let k = 0; k < 7; k++) cyl(F, MAT.iron, 0.9, B0 + 0.62 + (k % 3) * 0.55, 5.4 + k * 0.3, 0.07, 0.07, 0.16, [0x8a3a2a, 0x3a5a7a, 0xb8a060, 0x6a6a6a][k % 4], 10); solidBox(F, 0.6, 5.1, 1.3, 7.5, B0 - 0.1, B0 + 1.8);
     for (const [z, a] of [[4.2, 0.18], [4.5, 0.14]]) { cyl(F, MAT.plain, 0.78, B0 + 0.75, z, 0.018, 0.018, 1.5, 0x8a6a42, 6, 0, a); } box(F, MAT.iron, 0.66, B0 + 0.1, 4.2, 0.08, 0.3, 0.22, 0x4a4a48);
-    JLIGHTS.push(light(F, 4.0, yt - 0.2, 5.0, 0.9, 11)); JLIGHTS.push(light(F, 7.7, jt - 0.2, 15.0, 0.8, 11)); }
+    // a push mower, a spade, a ladder hung on the front wall (guesses)
+    { const mx = 3.9, mz = 1.6; box(F, MAT.iron, mx, B0 + 0.16, mz, 0.5, 0.12, 0.42, 0x3a5a3a); for (const s of [-1, 1]) cyl(F, MAT.iron, mx + s * 0.28, B0 + 0.12, mz, 0.12, 0.12, 0.05, 0x2a2a2a, 12, 0, Math.PI / 2);
+      for (const s of [-1, 1]) box(F, MAT.plain, mx + s * 0.18, B0 + 0.58, mz + 0.38, 0.03, 0.03, 1.1, 0x6a4a2a, -0.8); box(F, MAT.plain, mx, B0 + 0.98, mz + 0.76, 0.42, 0.04, 0.04, 0x6a4a2a); solidBox(F, mx - 0.32, mz - 0.25, mx + 0.32, mz + 0.9, yb, B0 + 0.4); }
+    cyl(F, MAT.plain, 0.75, B0 + 0.85, 3.4, 0.016, 0.016, 1.3, 0x8a6a42, 6, 0, 0.12); box(F, MAT.iron, 0.68, B0 + 0.14, 3.4, 0.05, 0.28, 0.2, 0x5a5a58);
+    for (const y of [1.25, 1.65]) box(F, MAT.plain, 2.6, B0 + y, 0.66, 3.2, 0.06, 0.05, 0xa88a60); for (let k = 0; k < 11; k++) box(F, MAT.plain, 1.1 + k * 0.3, B0 + 1.45, 0.66, 0.035, 0.4, 0.035, 0xa88a60);
+    // the kitchen store room: shelves of home-canned and bought goods along the front and west walls, a potato bin, sacks, crates (typical, by guess)
+    { const JAR = [0xa83a2a, 0xd8882a, 0x5a7a3a, 0x8a9a4a, 0x6a2a3a, 0xc8b060, 0xb8b4a8];
+      for (let k = 0; k < 4; k++) { const y = B0 + 0.35 + k * 0.45; box(F, MAT.plank, 11.0, y, 0.82, 3.8, 0.03, 0.4, 0x9a7a52); box(F, MAT.plank, 12.88, y, 4.1, 0.4, 0.03, 5.4, 0x9a7a52);
+        for (let i = 0; i < 16; i++) if ((i * 3 + k) % 7) cyl(F, MAT.plain, 9.25 + i * 0.235, y + 0.1, 0.8, 0.045, 0.045, 0.17, JAR[(i * 5 + k * 3) % 7], 8);
+        for (let i = 0; i < 20; i++) if ((i * 5 + k) % 6) cyl(F, MAT.plain, 12.9, y + 0.1, 1.6 + i * 0.25, 0.045, 0.045, 0.17, JAR[(i * 3 + k) % 7], 8); }
+      for (const x of [9.1, 12.9]) box(F, MAT.plain, x, B0 + 0.85, 0.82, 0.04, 1.7, 0.4, 0x6a5038); for (const z of [1.4, 6.8]) box(F, MAT.plain, 12.88, B0 + 0.85, z, 0.4, 1.7, 0.04, 0x6a5038);
+      solidBox(F, 9.05, 0.6, 12.95, 1.02, yb, B0 + 1.8); solidBox(F, 12.68, 1.4, 13.1, 6.8, yb, B0 + 1.8);
+      box(F, MAT.plank, 9.6, B0 + 0.4, 8.3, 1.0, 0.8, 0.8, 0x8a6a42); for (let i = 0; i < 9; i++) cyl(F, MAT.plain, 9.3 + (i % 3) * 0.3, B0 + 0.82, 8.05 + ((i / 3) | 0) * 0.25, 0.07, 0.06, 0.1, 0x9a7a4a, 7);
+      for (const [x, z] of [[10.6, 8.4], [11.1, 8.45], [10.85, 8.0]]) cyl(F, MAT.cloth, x, B0 + 0.35, z, 0.22, 0.26, 0.7, 0xe0d8c0, 10); solidBox(F, 9.1, 7.75, 11.4, 8.8, yb, B0 + 0.9);
+      box(F, MAT.plank, 11.6, B0 + 0.25, 7.0, 0.6, 0.5, 0.45, 0xa88a60); box(F, MAT.plank, 11.6, B0 + 0.7, 7.0, 0.55, 0.4, 0.42, 0x9a7a52); }
+    // lights in the house's basement, the laundry and the back of the 1904 basement; none in the three rooms under the jail of 1869 (the family)
+    for (const [x, y, z] of [[2.8, yt, 4.5], [6.3, yt, 1.6], [10.9, yt, 4.5], [2.6, jt2, 29.0], [9.0, jt2, 28.5]]) JLIGHTS.push(light(F, x, y - 0.2, z, 0.9, 11)); }
   // ---- the jail of 1869-71: two storeys, 16-inch walls; inside, on each floor, a cage of six cells of iron bars inside a grated corridor,
   // a hall round it, the cage in front of the inner jail door, and the iron stair ----
   const X0 = 2.0, X1 = 13.4, Z0 = HZ, Z1 = 20.7;
@@ -53899,9 +53969,10 @@ function buildJail() { const F = JF;
   // outside wall; a small wing on the south side with the conversation cage below and the lockers storeroom above ----
   const RX0 = -0.55, RX1 = 12.7, RZ1 = 31.75;
   for (const y0 of [J1, J2]) { for (const z of [23.3, 26.3, 29.3]) { op("x", RX0 + T / 2, z, 0.9, y0 + 1.5, 1.6); op("x", RX1 - T / 2, z, 0.9, y0 + 1.5, 1.6); } for (const x of [0.9, 11.4]) op("z", RZ1 - T / 2, x, 0.9, y0 + 1.5, 1.6); }
+  op("z", RZ1 - T / 2, 6.5, 0.9, B0, 1.95, { door: true }); op("z", 20.925, 6.5, 1.1, B0, 1.95, { door: true });
   wallLine(F, RX0, 20.925, 2.0, 20.925, -0.4, JTOP, T, MAT.wbrick, 0xe8e4d8, MAT.wbrick, WASH, true, false); wallLine(F, 2.0, 20.925, X1, 20.925, -0.4, JTOP, T, MAT.wbrick, 0xe8e4d8, MAT.wbrick, WASH, true, false);
   bwall(F, RX0 + T / 2, 20.7, RX0 + T / 2, RZ1, -0.4, JTOP, 1, MAT.wbrick, 0xe8e4d8, JAILBRICK); bwall(F, RX1 - T / 2, 20.7, RX1 - T / 2, RZ1, -0.4, JTOP, -1, MAT.wbrick, 0xe8e4d8, JAILBRICK); bwall(F, RX0, RZ1 - T / 2, RX1, RZ1 - T / 2, -0.4, JTOP, -1, MAT.wbrick, 0xe8e4d8, JAILBRICK);
-  box(F, MAT.conc, (RX0 + RX1) / 2, -0.1, (20.7 + RZ1) / 2, RX1 - RX0 + 0.1, 0.6, RZ1 - 20.7 + 0.1, 0xb8b4a8);
+  box(F, MAT.conc, (RX0 + RX1) / 2, 0.15, (20.7 + RZ1) / 2, RX1 - RX0 + 0.1, 0.3, RZ1 - 20.7 + 0.1, 0xb8b4a8);
   for (const o of OPS.filter(o => !o.door && (o.line === "x" && (o.at === RX0 + T / 2 || o.at === RX1 - T / 2) || o.line === "z" && o.at === RZ1 - T / 2))) barredWindow(F, { ...o, base: o.b - 1.5, b: 1.5, out: o.line === "z" ? 1 : o.at > 5 ? 1 : -1, in: o.line === "z" ? 1 : o.at > 5 ? 1 : -1 }, T);
   wallLine(F, 5.7, 21.15, 5.7, RZ1 - T, J1 - 0.3, JTOP, 0.3, MAT.wbrick, WASH, MAT.wbrick, WASH, true, false);
   slab(F, MAT.conc, 0x9a968c, RX0 + T, 21.15, RX1 - T, RZ1 - T, J1, 0.3); slab(F, MAT.conc, 0x8a8a84, RX0 + T, 21.15, RX1 - T, RZ1 - T, J2, 0.25); slab(F, MAT.plaster, 0xe8e4dc, RX0 + T, 21.15, RX1 - T, RZ1 - T, J2 - 0.25, 0.02); slab(F, MAT.plaster, 0xe8e4dc, RX0 + T, 21.15, RX1 - T, RZ1 - T, JTOP - 0.1, 0.05);
@@ -53952,7 +54023,9 @@ function buildJail() { const F = JF;
       picketFence(F, -3.0, fz, 16.7, fz, 1.25, [[6.85 - 0.8, 6.85 + 0.8]]); for (const x of [-3.0, 16.7]) picketFence(F, x, fz, x, 0, 1.25);
       for (const x of [6.85 - 0.86, 6.85 + 0.86]) { box(F, MAT.iron, x, 0.8, fz, 0.16, 1.6, 0.16, 0x2a2c2a); cyl(F, MAT.iron, x, 1.68, fz, 0.1, 0.1, 0.16, 0x2a2c2a, 10); }
       for (let i = 0; i <= 6; i++) box(F, MAT.bars, 6.85 + 0.75 - 0.025 * i, 0.62, fz + 0.06 + i * 0.12, 0.022, 1.1, 0.022, 0x2a2c2a); box(F, MAT.bars, 6.85 + 0.72, 0.25, fz + 0.42, 0.02, 0.04, 0.74, 0x2a2c2a); box(F, MAT.bars, 6.85 + 0.72, 1.05, fz + 0.42, 0.02, 0.04, 0.74, 0x2a2c2a); }
-    box(F, MAT.conc, -1.0, 0.03, 4.5, 1.22, 0.1, 9.0, 0xffffff); box(F, MAT.conc, 14.6, 0.03, 4.5, 1.22, 0.1, 9.0, 0xffffff); }
+    box(F, MAT.conc, -1.0, 0.03, 4.5, 1.22, 0.1, 9.0, 0xffffff); box(F, MAT.conc, 14.6, 0.03, 3.7, 1.22, 0.1, 7.4, 0xffffff);
+    // (1964: the west walk stops short of the steps down to the basement door; a walk from the porch at the visitors' door out to the yard)
+    box(F, MAT.conc, 16.2, 0.03, 10.2, 3.6, 0.1, 1.22, 0xffffff); }
   // ---- inside, 1964, ground floor (the family's marked-up plan, sources/family_markup_ground_floor.webp). The hall down the middle with
   // the stair forward in it. East (low X): the family's side, the living room in front and the kitchen behind, the range under the
   // peephole, a side door and steps from the kitchen. West (high X): the office side, the raised office area in front, the booking area
@@ -54323,7 +54396,12 @@ info(JP(3.2, 7.4, F1 + 1.9), "The kitchen and the peephole", "This was the kitch
 info(JP(11.6, 6.0, F1 + 1.9), "The visiting room", "From the family's recollection and plan: once the jail's booking room and main entry; by 1964 the visiting room, split down the middle. The visitors' side on the west came in from the jail yard by a door in the back wall at the west corner, where trustees might be hanging about; the prisoners' side on the east held the only door into the jail, and a one-way mirror in a never-opened door from the back of the hall looked into it; both sides opened onto the booking area in front. The counter and mesh between the two sides, the stools, and the exact door places are guesses. The second peephole in the back wall here follows Bowles's history.");
 info(JP(10.6, 3.9, F1 + 1.9), "The booking area and the raised office", "Once the living room (the family's recollection). In 1964 the booking area ran across the middle of the west side, and the raised office area filled the front, two steps up from the booking area, with its own door from the front of the hall (the family's plan). There was no door from the hall into the booking area, and no outside door on this side but the one at the north corner. From the family's description: no desk, but an eye-height barrier along the office's north edge, with a shoulder-height opening at its west end (desk height from inside); along the barrier, on the office side, a desk-height strip for the officers, the radio set in its middle for talking to the county deputies and the \"night-riders\"; and a typewriter on a wheeled stand for the sergeant. The exact heights, the radio set's look and the other fittings are guesses.");
 info(JP(-1.9, 10.5, 1.8), "The dog yard", "The yard for the family's German Shepherd, fenced off east of the kitchen, between the house and the jail (the family's plan). The wire fence, its gate on the side walk, and the doghouse are guesses.");
-info(JP(4.0, 5.0, B0 + 1.9), "The basement", "From the family's recollection: a basement under both the house and the jail, reached by a stair under the main stair; two-foot stone walls under the house, and perhaps not a very finished floor; tools kept in the south-east corner. The jail's basement is reached here through the foundation wall of the house; that opening, the workbench, shelves and tools, and the lights are guesses, to be put right.");
+info(JP(6.3, 1.2, B0 + 1.9), "The basement under the house", "From the family's recollection and marked-up plan: two-foot stone walls, and perhaps not a very finished floor. The hall runs down the middle between stone walls, with the stair coming down under the main stair; near the front a doorway on each side. On the west, the kitchen store room, with a door near the back of the west wall out to steps up into the yard; on the east, the tool storage. At the back of the hall an opening through the foundation leads into the jail's basement. The shelves, canned goods, bins, workbench, tools and the lights are guesses, and so are the exact places of the doorways.");
+info(JP(11.0, 4.5, B0 + 1.9), "The kitchen store room", "The kitchen store room (the family's plan), under the booking area and visiting room, with the outside door at the back of its west wall. What was kept here (shelves of jars and cans, a potato bin, sacks of flour and sugar) is typical of the time and placed by guess.");
+info(JP(6.5, 15.0, B0 + 1.9), "Under the jail of 1869", "Three rooms one behind another under the old jail, behind two-foot stone walls, with no lights and no doors (the family's plan): only openings in the walls, on the way through toward the back. The widths of the openings follow the family's sketch roughly. The stone mass jutting from the back wall is drawn as the sketch shows it; what it was is not known.");
+info(JP(3.0, 22.5, B0 + 1.9), "The solitary confinement cell", "Under the front of the 1904 addition, on its east side: the solitary confinement cell (the family's plan). Its size is as the sketch draws it; the iron door, the plank bunk, the bucket and where the door is are guesses.");
+info(JP(2.6, 28.5, B0 + 1.9), "The washing machines", "The jail's laundry, behind the solitary cell under the 1904 addition (the family's plan: \"washing machines\"). The number and kind of machines, the dryer, tub and table are typical of the 1960s and placed by guess.");
+info(JP(6.5, 33.2, 1.6), "Steps down to the jail's basement", "Steps down to a basement door in the back wall of the 1904 addition, leading into its open west side (the family's plan). The house has a door like it near the back of its west wall. The stone sides and pipe rail are guesses.");
 info(JP(6.85, 2.2, F3 + 1.9), "The third floor", "Rooms under the mansard, reached by a stair over the main one (the family's recollection). The 1960 history says this storey was left unfinished until about 1893. How the rooms were divided and used in 1964 is not yet described: the walls follow the floors below, a hall over the stair and two rooms each side.");
 info(JP(6.7, 10.2, J1 + 1.9), "The jail of 1869: the cage", "From the 1960 history: the cells were enclosed by iron bars, inside a grated corridor; in 1878 the lower two feet of the grating were sheathed with No. 8 plate iron; a cage stood in front of the inner jail door, so the jailer could open one door at a time. A rock floor; furnace heat, then steam heat in 1893 (put in by Tuxhorn Brothers); electric light in 1895 (21 lights); plumbing in 1899. The Sanborn map marks 16-inch brick walls, two storeys, steam heat and electric light. Not known: how many cells, or their layout; six on each floor here is a guess.");
 info(JP(3.0, 15.0, J2 + 1.9), "The jail of 1869: upstairs", "The upper floor repeats the lower, reached by an iron stair. The history speaks of \"both halls\"; how the floors were arranged is not recorded.");
@@ -54376,7 +54454,14 @@ const PLACES = [
   ["The conversation cage", () => JP(-1.6, 16.0, J1), JRY + Math.PI],
   ["Upstairs in the sheriff's house", () => JP(6.4, 7.8, F2), JRY],
   ["The third floor, under the mansard", () => JP(6.4, 8.6, F3), JRY],
-  ["The basement: the tool corner", () => JP(4.5, 6.0, B0), JRY + Math.PI * 0.75],
+  ["The basement: the hall at the foot of the stair", () => JP(6.45, 1.0, B0), JRY + Math.PI],
+  ["The basement: the tool storage", () => JP(4.5, 6.0, B0), JRY + Math.PI * 0.75],
+  ["The basement: the kitchen store room", () => JP(9.3, 2.0, B0), JRY + Math.PI * 0.75 + 1.6],
+  ["Under the jail of 1869: the dark rooms", () => JP(6.6, 10.0, B0), JRY + Math.PI],
+  ["Under the 1904 addition: the solitary cell", () => JP(7.0, 21.8, B0), JRY + Math.PI / 2],
+  ["Under the 1904 addition: the washing machines", () => JP(4.8, 30.5, B0), JRY + Math.PI / 2 - 0.6],
+  ["The steps down to the jail's basement", () => JP(6.5, 36.0, BKY), JRY, -0.45],
+  ["The steps down to the house's basement", () => JP(18.9, 8.3, 0), JRY + Math.PI / 2, -0.45],
   ["The power house: the garage doors", () => JP(10.0, 37.0, PH.GF), JRY + Math.PI],
   ["The power house: in the garage", () => JP(14.5, 55.6, PH.GF), JRY + Math.PI + 0.5],
   ["The power house: the boiler room", () => JP(3.3, 64.6, PH.LF), JRY + 0.3],
